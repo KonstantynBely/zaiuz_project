@@ -19,6 +19,8 @@ import { measurementsRoutes } from './modules/measurements/measurements.routes.j
 import { createSimulationsRepository } from './modules/simulations/simulations.repository.js';
 import { createSimulationsService } from './modules/simulations/simulations.service.js';
 import { simulationsRoutes } from './modules/simulations/simulations.routes.js';
+import { createEventsService } from './modules/events/events.service.js';
+import { eventsRoutes } from './modules/events/events.routes.js';
 
 /** Composition root: zależności można wstrzykiwać w testach bez tworzenia globalnego Pool. */
 export function buildApp(options:{pool?:Pool}={}):FastifyInstance {
@@ -28,7 +30,9 @@ export function buildApp(options:{pool?:Pool}={}):FastifyInstance {
   ]}});
   registerErrorHandling(app);
   app.addHook('onRequest',async(request,reply)=>{
-    if(request.url.startsWith('/api/')&&!acceptsJson(request.headers.accept)) {
+    const sse=request.url.split('?')[0]==='/api/events' && request.method==='GET' &&
+      (request.headers.accept??'').split(',').some(x=>x.trim().startsWith('text/event-stream'));
+    if(request.url.startsWith('/api/')&&!sse&&!acceptsJson(request.headers.accept)) {
       throw new ApiError(406,'Żądany format odpowiedzi nie jest dostępny');
     }
     if(request.url.startsWith('/api/')&& !['GET','HEAD','OPTIONS'].includes(request.method) && request.headers['content-type'] &&
@@ -42,13 +46,16 @@ export function buildApp(options:{pool?:Pool}={}):FastifyInstance {
     return payload;
   });
   app.register(healthRoutes);
+  const events=createEventsService();
+  app.register(async instance=>eventsRoutes(instance,events));
+  app.addHook('preClose',async()=>{events.close();});
   if(options.pool) {
     const pool=options.pool;
     const authService=createAuthService(createAuthRepository(pool));
     const adminGuard:preHandlerHookHandler=async request=>{await authService.requireAdmin(bearerToken(request));};
     const seriesService=createSeriesService(createSeriesRepository(pool));
     const sensorService=createSensorsService(createSensorsRepository(pool));
-    const measureService=createMeasurementsService(createMeasurementsRepository(pool));
+    const measureService=createMeasurementsService(createMeasurementsRepository(pool),events.publish);
     app.register(async instance=>authRoutes(instance,authService,adminGuard));
     app.register(async instance=>seriesRoutes(instance,seriesService,adminGuard));
     app.register(async instance=>sensorsRoutes(instance,sensorService,adminGuard));

@@ -24,7 +24,7 @@ export function parseMeasurementQuery(query:MeasurementQuery) {
   return {series,from,to,sort,limit};
 }
 
-export function createMeasurementsService(repo:MeasurementsRepository) {
+export function createMeasurementsService(repo:MeasurementsRepository,onCreated?:(measurement:ReturnType<typeof expose>)=>void) {
   return {
     async list(query:MeasurementQuery) { return (await repo.list(parseMeasurementQuery(query))).map(expose); },
     async get(id:string) {
@@ -37,7 +37,7 @@ export function createMeasurementsService(repo:MeasurementsRepository) {
       const timestamp=input.timestamp ? parseTimestamp(input.timestamp) : new Date();
       const hashed=createHash('sha256').update(key).digest('hex');
       const result=await repo.insertWithKey(hashed,input.value,timestamp);
-      if('row' in result)return expose(result.row);
+      if('row' in result){const measurement=expose(result.row);onCreated?.(measurement);return measurement;}
       if(result.error==='auth')throw new ApiError(401,'Klucz czujnika jest niepoprawny lub wyrejestrowany');
       const detail=result.error==='range'?'Wartość pomiaru jest poza zakresem serii':
         'Znacznik czasu pomiaru jest późniejszy o ponad 5 minut';
