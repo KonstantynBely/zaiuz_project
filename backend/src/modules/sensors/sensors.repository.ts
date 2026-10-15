@@ -1,0 +1,40 @@
+import type { Pool } from 'pg';
+
+export interface SensorRow {
+  id: string; name: string; series_id: string; registered_at: Date;
+  last_measurement_at: Date | null;
+}
+const listColumns = `s.id::text, s.name, s.series_id::text,
+  s.registered_at, (SELECT MAX(m.timestamp) FROM measurements m WHERE m.sensor_id=s.id) AS last_measurement_at`;
+
+export function createSensorsRepository(pool: Pool) {
+  return {
+    async list(): Promise<SensorRow[]> {
+      return (await pool.query<SensorRow>(
+        `SELECT ${listColumns} FROM sensors s WHERE s.revoked_at IS NULL ORDER BY s.id`,
+      )).rows;
+    },
+    async findById(id: string): Promise<SensorRow | null> {
+      return (await pool.query<SensorRow>(
+        `SELECT ${listColumns} FROM sensors s WHERE s.id=$1 AND s.revoked_at IS NULL`, [id],
+      )).rows[0] ?? null;
+    },
+    async register(input: { name:string; seriesId:string; keyHash:string }): Promise<SensorRow | null> {
+      // INSERT .. SELECT eliminując ryzyko FK dla nieistniejącej serii.
+      const result = await pool.query<{ id:string }>(
+        `INSERT INTO sensors (name,series_id,api_key_hash)
+         SELECT $1,id,$3 FROM series WHERE id=$2
+         RETURNING id::text`, [input.name, input.seriesId, input.keyHash],
+      );
+      if (!result.rows[0]) return null;
+      return this.findById(result.rows[0].id);
+    },
+    async revoke(id: string): Promise<boolean> {
+      const result = await pool.query(
+        'UPDATE sensors SET revoked_at=now() WHERE id=$1 AND revoked_at IS NULL RETURNING id', [id],
+      );
+      return (result.rowCount ?? 0) > 0;
+    },
+  };
+}
+export type SensorsRepository = ReturnType<typeof createSensorsRepository>;
