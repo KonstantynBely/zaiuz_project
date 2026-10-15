@@ -4,6 +4,8 @@ import { ApiError } from '../../common/errors.js';
 import type { AuthRepository } from './auth.repository.js';
 import type { LoginBody, PasswordBody } from './auth.schema.js';
 
+export const hashPassword = (password: string) => hash(password, 12);
+
 const TOKEN_LIFETIME = 3600;
 const digest = (token: string) => createHash('sha256').update(token).digest('hex');
 
@@ -33,7 +35,7 @@ export function createAuthService(repository: AuthRepository) {
         throw new ApiError(403, 'Bieżące hasło jest niepoprawne');
       }
       if (body.newPassword.length < 8) throw new ApiError(422, 'Nowe hasło jest zbyt krótkie');
-      const updated = await repository.changePassword(admin.id, admin.password_hash, await hash(body.newPassword, 12));
+      const updated = await repository.changePassword(admin.id, admin.password_hash, await hashPassword(body.newPassword));
       if (!updated) throw new ApiError(409, 'Hasło zostało zmienione w innej sesji');
     },
   };
