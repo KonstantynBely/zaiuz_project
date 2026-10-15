@@ -1,0 +1,80 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend i TimescaleDB
+    runs-on: ubuntu-latest
+    services:
+      timescaledb:
+        image: timescale/timescaledb:latest-pg17
+        env:
+          POSTGRES_DB: roversense_test
+          POSTGRES_USER: roversense
+          POSTGRES_PASSWORD: ci_only_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U roversense -d roversense_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 15
+    env:
+      DATABASE_URL: postgresql://roversense:ci_only_password@127.0.0.1:5432/roversense_test
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Instalacja zależności
+        run: npm install --no-audit --no-fund
+      - name: Kontrola typów
+        run: npm run typecheck
+      - name: Testy jednostkowe
+        run: npm test
+      - name: Kompilacja
+        run: npm run build
+      - name: Migracje PostgreSQL + TimescaleDB
+        run: npm run db:migrate
+      - name: Testy integracyjne z bazą
+        run: npm run test:integration
+
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Instalacja zależności
+        run: npm install --no-audit --no-fund
+      - name: Kontrola typów
+        run: npm run typecheck
+      - name: Budowanie strony
+        run: npm run build
+
+  simulator:
+    name: Generator Python
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Testy generatora
+        run: python -m unittest discover -s sensor-simulator/tests -v
