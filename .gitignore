@@ -1,0 +1,44 @@
+# Zależności i artefakty
+node_modules/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+
+# Ustawienia lokalne i sekrety
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Bazy i pliki tymczasowe
+*.sqlite
+*.sqlite3
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+*.sqlite-shm
+*.sqlite-wal
+data/
+
+# IDE i system
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# LaTeX — pliki pomocnicze
+*.aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.out
+*.synctex.gz
+*.toc
