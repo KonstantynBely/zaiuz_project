@@ -22,7 +22,7 @@ import { simulationsRoutes } from './modules/simulations/simulations.routes.js';
 
 /** Composition root: zależności można wstrzykiwać w testach bez tworzenia globalnego Pool. */
 export function buildApp(options:{pool?:Pool}={}):FastifyInstance {
-  const app=Fastify({logger:{redact:[
+  const app=Fastify({forceCloseConnections:'idle',logger:{redact:[
     'req.headers.authorization','req.headers.x-api-key','request.headers.authorization',
     'request.headers.x-api-key','res.headers.set-cookie',
   ]}});
@@ -55,7 +55,7 @@ export function buildApp(options:{pool?:Pool}={}):FastifyInstance {
     app.register(async instance=>measurementsRoutes(instance,measureService));
     const simulations=createSimulationsService(app,createSimulationsRepository(pool),seriesService,sensorService);
     app.register(async instance=>simulationsRoutes(instance,simulations,adminGuard));
-    app.addHook('onClose',async()=>{await simulations.close();});
+    app.addHook('preClose',async()=>{await simulations.close();});
   }
   return app;
 }
