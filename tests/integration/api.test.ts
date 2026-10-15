@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { hash } from 'bcryptjs';
+import { hashPassword } from '../../backend/src/modules/auth/auth.service.js';
 import { createPool } from '../../backend/src/database/pool.js';
 import { buildApp } from '../../backend/src/app.js';
 
@@ -13,7 +13,7 @@ test('API: logowanie, serie, czujniki, pomiary i uprawnienia na TimescaleDB',asy
   try {
     const inserted=await pool.query<{id:string}>(
       'INSERT INTO admins(username,password_hash) VALUES($1,$2) RETURNING id::text',
-      [unique,await hash('secret-for-tests-2026',8)]);
+      [unique,await hashPassword('secret-for-tests-2026')]);
     adminId=inserted.rows[0]!.id;
     const call=(method:'GET'|'POST'|'PUT'|'DELETE',url:string,token?:string,payload?:unknown)=>app.inject({
       method,url,headers:{...(token?{authorization:`Bearer ${token}`}:{})},
