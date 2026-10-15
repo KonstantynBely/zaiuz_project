@@ -1,4 +1,4 @@
-# Zależności i artefakty
+# Zależności i build
 node_modules/
 dist/
 build/
@@ -9,14 +9,14 @@ __pycache__/
 .pytest_cache/
 *.pyc
 
-# Ustawienia lokalne i sekrety
+# Lokalna konfiguracja i sekrety
 .env
 .env.*
 !.env.example
 *.pem
 *.key
 
-# Bazy i pliki tymczasowe
+# Lokalne dane / bazy
 *.sqlite
 *.sqlite3
 *.db
@@ -33,7 +33,7 @@ data/
 .DS_Store
 Thumbs.db
 
-# LaTeX — pliki pomocnicze
+# LaTeX — artefakty kompilacji
 *.aux
 *.bbl
 *.blg
