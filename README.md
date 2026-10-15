@@ -11,3 +11,7 @@ Aplikacja obejmuje REST API do odbierania pomiarów przesyłanych przez zarejest
 ## Materiały prowadzącego
 
 W katalogu [`instructor/`](instructor/) znajdują się dostarczone przez prowadzącego: kontrakt OpenAPI oraz referencyjny skrypt testujący.
+
+## Hosting
+
+Konfigurację instancji Oracle Cloud i założenia wdrożenia opisano w [docs/hosting.md](docs/hosting.md).
