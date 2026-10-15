@@ -1,4 +1,4 @@
-import { hash } from 'bcryptjs';
+import { hashPassword } from '../modules/auth/auth.service.js';
 import { createPool } from './pool.js';
 
 /** Uruchamiany ręcznie po migracji; nie zapisuje hasła ani jego wartości w logach. */
@@ -10,7 +10,7 @@ async function main() {
   }
   const pool = createPool();
   try {
-    const passwordHash = await hash(password, 12);
+    const passwordHash = await hashPassword(password);
     await pool.query(
       `INSERT INTO admins(username,password_hash) VALUES($1,$2)
        ON CONFLICT (username) DO UPDATE SET password_hash=EXCLUDED.password_hash`,
