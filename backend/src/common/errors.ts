@@ -20,9 +20,9 @@ export function registerErrorHandling(app: FastifyInstance): void {
   });
   app.setErrorHandler((error: FastifyError | ApiError, request, reply) => {
     let status = error instanceof ApiError ? error.status : error.statusCode ?? 500;
-    if (error.validation) status = 400;
-    if (error.code === 'FST_ERR_CTP_INVALID_MEDIA_TYPE') status = 415;
-    if (error.code === 'FST_ERR_CTP_INVALID_JSON_BODY' || error.code === 'FST_ERR_CTP_EMPTY_JSON_BODY') status = 400;
+    if (!(error instanceof ApiError) && error.validation) status = 400;
+    if (!(error instanceof ApiError) && error.code === 'FST_ERR_CTP_INVALID_MEDIA_TYPE') status = 415;
+    if (!(error instanceof ApiError) && (error.code === 'FST_ERR_CTP_INVALID_JSON_BODY' || error.code === 'FST_ERR_CTP_EMPTY_JSON_BODY')) status = 400;
     if (status < 400 || status > 599) status = 500;
     if (status >= 500) request.log.error({ err: error }, 'Błąd aplikacji');
     reply.code(status).type('application/problem+json').send({
