@@ -61,6 +61,8 @@ export function createSimulationsService(
           method:'POST',headers:{'Content-Type':'application/json','X-API-Key':key},
           body:JSON.stringify({value,...(timestamp?{timestamp}:{})}),signal,
         });
+        // Zwolnij połączenie HTTP po każdym POST, zanim wykonawca przejdzie dalej.
+        await res.arrayBuffer();
         await repo.count(id,res.ok);
         if(!res.ok && res.status===401)throw new Error('Klucz czujnika został unieważniony');
         if(i<params.count-1 && params.mode==='live')await pause(params.intervalMs,signal);
