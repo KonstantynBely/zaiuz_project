@@ -38,6 +38,8 @@ Hasło administratora ustaw przed uruchomieniem `db:seed-admin` w pliku `.env` (
 
 ## Backend
 
+Backend pobiera konfigurację z otoczenia procesu: `DATABASE_URL` określa połączenie z PostgreSQL, a `HOST` i `PORT` adres oraz port nasłuchiwania. Na serwerze zmienne te, wraz z `NODE_ENV=production`, są przechowywane w `/etc/roversense/backend.env` (uprawnienia `root:roversense`, `0640`). Plik jest wczytywany podczas uruchamiania procesu, np. przez `EnvironmentFile` w systemd; kod aplikacji nie jest zależny od nazwy ani lokalizacji tego pliku. Konfiguracja zawierająca hasła nie trafia do Git.
+
 API implementuje logowanie, wylogowanie i zmianę hasła administratora; CRUD serii, rejestrację i wyrejestrowanie czujników oraz publiczny odczyt i zapis pomiarów z kluczem `X-API-Key`. Każdy wynik trafia do rzeczywistej hypertable TimescaleDB. Weryfikowane są zakresy serii, znaczniki czasu i autoryzacja. Błędne żądania zwracają Problem Details. Osobne endpointy `/api/simulations` umożliwiają zalogowanemu administratorowi uruchamianie i zatrzymywanie symulacji, a każdy zapisany przez nie wynik nadal przechodzi przez `POST /api/measurements`. Publiczny strumień `GET /api/events` udostępnia nowe pomiary przez Server-Sent Events do aktualizacji wykresów na żywo.
 
 Publiczne ścieżki to `/api/health`, `/api/series`, `/api/series/:id`, `/api/measurements` i `/api/measurements/:id`. Operacje modyfikacji serii i zarządzania czujnikami wymagają `Authorization: Bearer <token>`. Przy zapisie pomiaru wymagany jest klucz czujnika z jednorazowej odpowiedzi `POST /api/sensors`.
