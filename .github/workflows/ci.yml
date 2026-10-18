@@ -90,7 +90,9 @@ jobs:
           bash -n deploy/scripts/bootstrap-db.sh
       - name: Kontrola koncow linii LF
         run: |
-          if grep -n \r' deploy/scripts/*.sh; then
-            echo 'Skrypty Bash musza miec zakonczenia linii LF' >&2
-            exit 1
-          fi
+          python3 - <<'PY'
+          from pathlib import Path
+          for script in Path('deploy/scripts').glob('*.sh'):
+              if 13 in script.read_bytes():
+                  raise SystemExit(f'Nieprawidlowe konce linii CRLF: {script}')
+          PY
