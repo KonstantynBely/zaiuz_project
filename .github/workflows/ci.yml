@@ -78,3 +78,13 @@ jobs:
           python-version: '3.12'
       - name: Testy generatora
         run: python -m unittest discover -s sensor-simulator/tests -v
+
+  db-scripts:
+    name: Skrypty przygotowania bazy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Kontrola skladni Bash
+        run: |
+          bash -n deploy/scripts/install-db.sh
+          bash -n deploy/scripts/bootstrap-db.sh
