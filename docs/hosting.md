@@ -32,7 +32,7 @@ Adres IP, klucze SSH, hasła i pozostałe sekrety nie są przechowywane w repozy
 Na jednej maszynie Ubuntu mają działać:
 
 - **Nginx** (lub Caddy): publiczny HTTPS, statyczny build React + Vite oraz reverse proxy `/api` do backendu.
-- **Node.js / Fastify / TypeScript**: REST API dostępne lokalnie za reverse proxy.
+- **Node.js 24 LTS / Fastify / TypeScript**: REST API dostępne lokalnie za reverse proxy. Docelową wersją środowiska uruchomieniowego jest Node.js 24; po aktualizacji pakietu na VM należy potwierdzić ją poleceniem `node -v`.
 - **PostgreSQL + TimescaleDB**: lokalna baza danych; pomiary zapisywane w hypertable partycjonowanej według czasu.
 - **Python**: generator danych i procesy symulatorów uruchamiane po stronie serwera. Pomiary trafiają do API przez `POST /api/measurements`, nie bezpośrednio do bazy.
 - **systemd**: nadzorowanie procesów backendu i symulatorów.

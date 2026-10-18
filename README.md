@@ -8,7 +8,7 @@ Backend: Node.js, Fastify, TypeScript. Frontend: React, Vite, TypeScript. Baza: 
 
 ## Uruchomienie lokalne
 
-Wymagane Node.js 22+, Python 3.12+ oraz Docker z Compose. W katalogu głównym:
+Wymagane Node.js 24 LTS, Python 3.12+ oraz Docker z Compose. W katalogu głównym:
 
 ```bash
 cp .env.example .env
