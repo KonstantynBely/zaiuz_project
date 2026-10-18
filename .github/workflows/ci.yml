@@ -88,3 +88,9 @@ jobs:
         run: |
           bash -n deploy/scripts/install-db.sh
           bash -n deploy/scripts/bootstrap-db.sh
+      - name: Kontrola koncow linii LF
+        run: |
+          if grep -n \r' deploy/scripts/*.sh; then
+            echo 'Skrypty Bash musza miec zakonczenia linii LF' >&2
+            exit 1
+          fi
