@@ -44,3 +44,18 @@ Docelowo publiczne będą tylko porty HTTP/HTTPS (80/443) i kontrolowany dostęp
 Docelowe wdrażanie: **GitHub Actions → testy i build → SSH → OCI VM**. Kod i artefakty wydań powinny być oddzielone od danych PostgreSQL. Przed udostępnieniem aplikacji trzeba skonfigurować certyfikat HTTPS, migracje, backup bazy poza VM, test odtworzenia oraz monitoring dostępności.
 
 **Stan wdrożenia:** utworzono i uruchomiono instancję z publicznym IPv4. Działanie SSH, instalacja PostgreSQL/TimescaleDB na ARM64, usługi aplikacji, domena, HTTPS i pipeline CI/CD nie zostały jeszcze potwierdzone. Instancja Always Free nie gwarantuje ciągłej dostępności — Oracle może odzyskiwać nieaktywne zasoby.
+
+## Przygotowanie bazy danych na Ubuntu
+
+Skrypty obsługują **Ubuntu 24.04 ARM64** i PostgreSQL **17**. Uruchamia się je na nowej instancji z poziomu katalogu głównego projektu, po sprawdzeniu dostępnego miejsca i upewnieniu się, że nie ma istniejącej bazy do zachowania:
+
+```bash
+sudo bash deploy/scripts/install-db.sh
+sudo bash deploy/scripts/bootstrap-db.sh
+```
+
+Pierwszy skrypt konfiguruje repozytoria pakietów i uruchamia PostgreSQL z TimescaleDB tylko na localhost. Drugi tworzy rolę `roversense` (interaktywnie prosi o hasło przy pierwszym uruchomieniu), bazę `roversense` i rozszerzenie `timescaledb`. Ponowne uruchomienie nie usuwa danych ani nie zeruje hasła istniejącej roli. Skrypty nie instalują aplikacji i nie uruchamiają migracji.
+
+Schemat bazy powstaje oddzielnie przez `npm run db:migrate` w katalogu `backend`, po ustawieniu prywatnego `DATABASE_URL` wskazującego na `127.0.0.1:5432/roversense`. Hasła ani pliku z konfiguracją produkcyjną nie zapisujemy w Git; dostęp do konfiguracji powinien być ograniczony do administratora i usługi backendu. Nie należy używać przykładowego hasła z `.env.example` na VPS-ie.
+
+Powyższe polecenia dotyczą **instalacji na nowym serwerze**, a nie aktualizacji istniejącej bazy. Aktualizacje aplikacji uruchamiają tylko brakujące migracje. Przed migracjami zmieniającymi strukturę należy wykonać backup i sprawdzić możliwość odtworzenia. Po instalacji sprawdź `pg_lsclusters`, `pg_isready -h 127.0.0.1 -p 5432` i `sudo -u postgres psql -d roversense -c "SELECT extversion FROM pg_extension WHERE extname = 'timescaledb';"`. Port 5432 ma pozostać zablokowany w OCI.
