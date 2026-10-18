@@ -88,3 +88,11 @@ jobs:
         run: |
           bash -n deploy/scripts/install-db.sh
           bash -n deploy/scripts/bootstrap-db.sh
+      - name: Kontrola koncow linii LF
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          for script in Path('deploy/scripts').glob('*.sh'):
+              if 13 in script.read_bytes():
+                  raise SystemExit(f'Nieprawidlowe konce linii CRLF: {script}')
+          PY

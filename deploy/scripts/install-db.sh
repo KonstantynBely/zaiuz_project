@@ -44,7 +44,7 @@ EOF
 
 apt-get update
 for package in postgresql-17 timescaledb-2-postgresql-17; do
-  candidate="$(apt-cache policy "$package" | awk '/Candidate:/ { print $2; exit }')"
+  candidate="$(apt-cache policy "$package" | awk '/Candidate:/ { value = $2 } END { print value }')"
   if [[ -z "$candidate" || "$candidate" == "(none)" ]]; then
     echo "Brak pakietu $package dla tej platformy. Przerwano instalacje." >&2
     exit 1
