@@ -19,4 +19,6 @@ sudo bash deploy/scripts/bootstrap-db.sh
 
 Pierwszy skrypt instaluje i konfiguruje PostgreSQL z TimescaleDB, a drugi tworzy rolę, bazę i rozszerzenie. Hasło roli jest podawane interaktywnie, bez zapisywania go w repozytorium.
 
-Struktura tabel jest definiowana w `database/migrations/001_initial.sql`. Migracje uruchamia się osobno, z katalogu `backend`, poleceniem `npm run db:migrate` po ustawieniu `DATABASE_URL`. Konfiguracja produkcyjna i hasła pozostają poza repozytorium.
+Struktura tabel jest definiowana w `database/migrations/001_initial.sql`. Migracje uruchamia się osobno, z katalogu `backend`, poleceniem `npm run db:migrate` po ustawieniu `DATABASE_URL`.
+
+Konfiguracja backendu znajduje się na serwerze w `/etc/roversense/backend.env`. Plik zawiera zmienne `NODE_ENV`, `HOST`, `PORT` i `DATABASE_URL`, ma uprawnienia `0640` i należy do `root:roversense`. Podczas uruchamiania backendu jest ładowany do środowiska procesu; plik i hasła nie są przechowywane w repozytorium.
