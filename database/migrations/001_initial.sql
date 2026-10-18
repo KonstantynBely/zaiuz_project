@@ -24,6 +24,7 @@ CREATE TABLE series (
   max_value DOUBLE PRECISION NOT NULL,
   color CHAR(7) NOT NULL CHECK (color ~ '^#[0-9A-Fa-f]{6}$'),
   unit TEXT,
+  icon TEXT,
   CHECK (min_value < max_value)
 );
 
