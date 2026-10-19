@@ -10,12 +10,13 @@ permissions:
   contents: read
 
 jobs:
+
   backend:
     name: Backend i TimescaleDB
     runs-on: ubuntu-latest
     services:
       timescaledb:
-        image: timescale/timescaledb:latest-pg17
+        image: timescale/timescaledb:2.30.2-pg17
         env:
           POSTGRES_DB: roversense_test
           POSTGRES_USER: roversense
@@ -38,13 +39,20 @@ jobs:
         with:
           node-version: '24'
       - name: Instalacja zależności
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
       - name: Kontrola typów
         run: npm run typecheck
       - name: Testy jednostkowe
         run: npm test
       - name: Kompilacja
         run: npm run build
+      - name: Artefakt backendu
+        uses: actions/upload-artifact@v4
+        with:
+          name: roversense-backend-dist
+          path: backend/dist/
+          if-no-files-found: error
+          retention-days: 3
       - name: Migracje PostgreSQL + TimescaleDB
         run: npm run db:migrate
       - name: Testy integracyjne z bazą
@@ -62,11 +70,18 @@ jobs:
         with:
           node-version: '24'
       - name: Instalacja zależności
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
       - name: Kontrola typów
         run: npm run typecheck
       - name: Budowanie strony
         run: npm run build
+      - name: Artefakt frontendu
+        uses: actions/upload-artifact@v4
+        with:
+          name: roversense-frontend-dist
+          path: frontend/dist/
+          if-no-files-found: error
+          retention-days: 3
 
   simulator:
     name: Generator Python
@@ -80,19 +95,128 @@ jobs:
         run: python -m unittest discover -s sensor-simulator/tests -v
 
   db-scripts:
-    name: Skrypty przygotowania bazy
+    name: Skrypty instalacji i serwera
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: Kontrola skladni Bash
         run: |
-          bash -n deploy/scripts/install-db.sh
-          bash -n deploy/scripts/bootstrap-db.sh
+          set -euo pipefail
+          for script in deploy/scripts/*.sh server/scripts/* server/config/roversense-activate; do
+            bash -n "$script"
+          done
       - name: Kontrola koncow linii LF
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          for script in Path('deploy/scripts').glob('*.sh'):
-              if 13 in script.read_bytes():
+
+          scripts = [
+              *Path('deploy/scripts').glob('*.sh'),
+              *Path('server/scripts').iterdir(),
+              Path('server/config/roversense-activate'),
+          ]
+          for script in scripts:
+              if script.is_file() and 13 in script.read_bytes():
                   raise SystemExit(f'Nieprawidlowe konce linii CRLF: {script}')
           PY
+
+  deploy:
+    name: Wdrożenie OCI
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
+    needs: [backend, frontend, simulator, db-scripts]
+    runs-on: ubuntu-24.04-arm
+    environment: production
+    concurrency:
+      group: roversense-production
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Pobranie backendu
+        uses: actions/download-artifact@v4
+        with:
+          name: roversense-backend-dist
+          path: release/backend/dist
+      - name: Pobranie frontendu
+        uses: actions/download-artifact@v4
+        with:
+          name: roversense-frontend-dist
+          path: release/frontend/dist
+      - name: Przygotowanie paczki produkcyjnej
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release/backend release/database release/sensor-simulator
+          cp backend/package.json release/backend/package.json
+          cp backend/package-lock.json release/backend/package-lock.json
+          cp -R database/migrations release/database/migrations
+          cp -R sensor-simulator/src release/sensor-simulator/src
+          (
+            cd release/backend
+            npm ci --omit=dev --no-audit --no-fund
+          )
+          test -s release/backend/dist/server.js
+          test -s release/backend/dist/database/migrate.js
+          test -s release/backend/node_modules/pg/package.json
+          test -s release/frontend/dist/index.html
+          test -s release/database/migrations/001_initial.sql
+          tar -czf "$RUNNER_TEMP/roversense-$GITHUB_SHA.tar.gz" -C release .
+      - name: Konfiguracja SSH
+        shell: bash
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.ROVERSENSE_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.ROVERSENSE_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$DEPLOY_SSH_KEY" || -z "$DEPLOY_KNOWN_HOSTS" ]]; then
+            echo 'Brak sekretów SSH wdrożenia.' >&2
+            exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/roversense-ssh"
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$RUNNER_TEMP/roversense-ssh/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$RUNNER_TEMP/roversense-ssh/known_hosts"
+          chmod 700 "$RUNNER_TEMP/roversense-ssh"
+          chmod 600 "$RUNNER_TEMP/roversense-ssh/key"
+          chmod 600 "$RUNNER_TEMP/roversense-ssh/known_hosts"
+      - name: Przesłanie i aktywacja wydania
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh_opts=(
+            -i "$RUNNER_TEMP/roversense-ssh/key"
+            -o BatchMode=yes
+            -o IdentitiesOnly=yes
+            -o StrictHostKeyChecking=yes
+            -o "UserKnownHostsFile=$RUNNER_TEMP/roversense-ssh/known_hosts"
+          )
+          target="roversense-deploy@roversense.duckdns.org"
+          scp "${ssh_opts[@]}" "$RUNNER_TEMP/roversense-$GITHUB_SHA.tar.gz" \
+            "$target:roversense-$GITHUB_SHA.tar.gz"
+          ssh "${ssh_opts[@]}" "$target" bash -s -- "$GITHUB_SHA" <<'REMOTE'
+          set -euo pipefail
+          sha="$1"
+          archive="$HOME/roversense-$sha.tar.gz"
+          release="/srv/roversense/releases/$sha"
+          incoming="/srv/roversense/incoming/$sha"
+
+          # Ponowne uruchomienie tego samego wydania nie wymaga ekstrakcji.
+          if [[ -d "$release" && ! -L "$release" ]]; then
+            rm -f -- "$archive"
+            sudo -n /usr/local/sbin/roversense-activate "$sha"
+            exit 0
+          fi
+
+          if [[ -e "$incoming" || -L "$incoming" ]]; then
+            echo "Katalog incoming jest juz zajety: $sha" >&2
+            exit 1
+          fi
+
+          mkdir -- "$incoming"
+          trap 'rm -rf -- "$incoming"; rm -f -- "$archive"' EXIT
+          tar -xzf "$archive" -C "$incoming" --no-same-owner
+          rm -f -- "$archive"
+          sudo -n /usr/local/sbin/roversense-activate "$sha"
+          trap - EXIT
+          REMOTE

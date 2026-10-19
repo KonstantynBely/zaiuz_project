@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+set -euo pipefail
+umask 077
+
+if [[ "$(id -un)" != "postgres" ]]; then
+  echo "Skrypt musi dzialac jako postgres." >&2
+  exit 1
+fi
+
+base=/var/backups/roversense/postgresql
+
+if [[ ! -d "$base" || -L "$base" ]]; then
+  echo "Niepoprawny katalog backupow." >&2
+  exit 1
+fi
+
+exec 9>"$base/.backup.lock"
+flock -n 9 || {
+  echo "Inny backup jest w toku." >&2
+  exit 1
+}
+
+tmp=$(mktemp -d "$base/.pending.XXXXXXXX")
+trap 'rm -rf -- "$tmp"' EXIT
+
+pg_dump -Fc -d roversense \
+  -f "$tmp/roversense.dump"
+
+pg_dumpall --globals-only \
+  > "$tmp/globals.sql"
+
+pg_restore -l "$tmp/roversense.dump" \
+  > "$tmp/contents.txt"
+
+(
+  cd "$tmp"
+  sha256sum roversense.dump globals.sql contents.txt \
+    > SHA256SUMS
+)
+
+stamp=$(date -u +%Y%m%dT%H%M%SZ)
+dest="$base/backup-$stamp-${tmp##*.}"
+
+mv -T "$tmp" "$dest"
+trap - EXIT
+
+echo "Backup utworzony: $dest"
+
+# Usuwanie kopii starszych niz 14 dni
+find "$base" -mindepth 1 -maxdepth 1 \
+  -type d -name 'backup-20??????T??????Z*' \
+  -mtime +13 -exec rm -rf -- {} +
