@@ -15,7 +15,7 @@ if [[ ! -d "$backup_root" || -L "$backup_root" ]]; then
 fi
 
 # Jednocześnie może działać tylko jedna kopia.
-exec 9>/run/lock/roversense-backup.lock
+exec 9>"$backup_root/.backup.lock"
 flock -n 9 || {
   echo 'Inne tworzenie kopii zapasowej jest w toku.' >&2
   exit 1
