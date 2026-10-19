@@ -98,17 +98,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Kontrola skladni Bash
+      - name: Kontrola składni skryptów Bash
         run: |
-          bash -n deploy/scripts/install-db.sh
-          bash -n deploy/scripts/bootstrap-db.sh
-      - name: Kontrola koncow linii LF
+          for script in deploy/scripts/*.sh server/scripts/* server/config/roversense-activate; do
+            bash -n "$script"
+          done
+      - name: Kontrola końców linii LF
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          for script in Path('deploy/scripts').glob('*.sh'):
+          scripts = [
+              *Path('deploy/scripts').glob('*.sh'),
+              *Path('server/scripts').glob('*'),
+              Path('server/config/roversense-activate'),
+          ]
+          for script in scripts:
               if 13 in script.read_bytes():
-                  raise SystemExit(f'Nieprawidlowe konce linii CRLF: {script}')
+                  raise SystemExit(f'Nieprawidłowe końce linii CRLF: {script}')
           PY
 
   deploy:
