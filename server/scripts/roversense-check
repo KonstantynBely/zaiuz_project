@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+set -uo pipefail
+
+# Odczytowa kontrola stanu serwera. Nie wykonuje restartów ani zmian sieci.
+failures=0
+
+pass() { printf '[OK] %s\n' "$1"; }
+fail() { printf '[BŁĄD] %s\n' "$1" >&2; failures=$((failures + 1)); }
+
+for service in postgresql@17-main.service roversense.service caddy.service; do
+  if systemctl is-active --quiet "$service"; then
+    pass "$service działa"
+  else
+    fail "$service nie działa"
+  fi
+done
+
+if [[ -L /srv/roversense/current ]] && [[ -f /srv/roversense/current/backend/dist/server.js ]]; then
+  pass 'aktywne wydanie zawiera backend'
+else
+  fail 'brak poprawnego dowiązania /srv/roversense/current'
+fi
+
+if curl -fsS --connect-timeout 3 --max-time 8 \
+    http://127.0.0.1:3000/api/health | grep -Fq '"status":"ok"'; then
+  pass 'lokalny healthcheck API'
+else
+  fail 'lokalny healthcheck API nie odpowiada'
+fi
+
+if curl -fsS --connect-timeout 5 --max-time 15 \
+    https://roversense.duckdns.org/api/health | grep -Fq '"status":"ok"'; then
+  pass 'publiczny HTTPS i healthcheck API'
+else
+  fail 'publiczny HTTPS lub healthcheck API nie działa'
+fi
+
+if [[ $EUID -eq 0 ]]; then
+  result=$(runuser -u postgres -- psql -X -A -t -v ON_ERROR_STOP=1 \
+    -d roversense -c "SELECT count(*) FROM timescaledb_information.hypertables WHERE hypertable_name = 'measurements';" 2>/dev/null)
+  if [[ "$result" == 1 ]]; then
+    pass 'hypertable measurements w TimescaleDB'
+  else
+    fail 'brak hypertable measurements lub zapytanie się nie powiodło'
+  fi
+
+  if systemctl is-enabled --quiet roversense-backup.timer; then
+    pass 'timer backupu jest włączony'
+  else
+    fail 'timer backupu nie został włączony'
+  fi
+
+  backup_root=/var/backups/roversense/postgresql
+  if [[ -d "$backup_root" ]] && find "$backup_root" -mindepth 1 -maxdepth 1 \
+      -type d -name 'backup-*' -mmin -2160 -print -quit | grep -q .; then
+    pass 'ostatnia kopia nie starsza niż 36 godzin'
+  else
+    fail 'brak świeżej kopii w katalogu backupów'
+  fi
+
+  listeners=$(ss -H -ltn '( sport = :5432 )' | awk '{print $4}')
+  if [[ -z "$listeners" ]]; then
+    fail 'PostgreSQL nie nasłuchuje na 5432'
+  elif grep -E '(^|[[:space:]])(0\.0\.0\.0:5432|\*:5432|\[::\]:5432|:::5432)' <<<"$listeners" >/dev/null; then
+    fail 'Port 5432 nasłuchuje publicznie (sprawdź listen_addresses)'
+  else
+    pass 'port 5432 nie nasłuchuje na wszystkich interfejsach'
+  fi
+else
+  printf '[INFO] Sprawdzenie bazy, backupu i portów uruchom przez sudo.\n'
+fi
+
+if (( failures > 0 )); then
+  printf 'Nieudane kontrole: %d\n' "$failures" >&2
+  exit 1
+fi
+printf 'Wszystkie wykonane kontrole zaliczone.\n'

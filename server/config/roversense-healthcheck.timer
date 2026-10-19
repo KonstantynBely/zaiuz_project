@@ -1,0 +1,10 @@
+[Unit]
+Description=RoverSense - kontrola działania co 15 minut
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=15min
+Unit=roversense-healthcheck.service
+
+[Install]
+WantedBy=timers.target

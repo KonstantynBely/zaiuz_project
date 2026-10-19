@@ -1,0 +1,28 @@
+name: Dostępność RoverSense
+
+on:
+  schedule:
+    - cron: '13,43 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  health:
+    name: Publiczne API i HTTPS
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Sprawdzenie healthchecku spoza Oracle Cloud
+        shell: bash
+        run: |
+          set -euo pipefail
+          response=$(curl --fail --silent --show-error --retry 2 --retry-delay 3 \
+            --proto '=https' --connect-timeout 8 --max-time 20 \
+            https://roversense.duckdns.org/api/health)
+          if [[ "$response" != '{"status":"ok"}' ]]; then
+            echo "Niepoprawna odpowiedź healthchecku" >&2
+            exit 1
+          fi
+          echo 'HTTPS i API odpowiadają poprawnie.'

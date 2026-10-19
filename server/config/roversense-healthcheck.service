@@ -1,0 +1,12 @@
+[Unit]
+Description=RoverSense - kontrola działania aplikacji i bazy
+After=network-online.target postgresql@17-main.service roversense.service caddy.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/libexec/roversense-check
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
