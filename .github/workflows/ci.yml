@@ -189,8 +189,24 @@ jobs:
           sha="$1"
           archive="$HOME/roversense-$sha.tar.gz"
           release="/srv/roversense/releases/$sha"
-          mkdir -p "$release"
-          tar -xzf "$archive" -C "$release"
-          rm -f "$archive"
+          incoming="/srv/roversense/incoming/$sha"
+
+          # Ponowne uruchomienie tego samego wydania nie wymaga ekstrakcji.
+          if [[ -d "$release" && ! -L "$release" ]]; then
+            rm -f -- "$archive"
+            sudo -n /usr/local/sbin/roversense-activate "$sha"
+            exit 0
+          fi
+
+          if [[ -e "$incoming" || -L "$incoming" ]]; then
+            echo "Katalog incoming jest juz zajety: $sha" >&2
+            exit 1
+          fi
+
+          mkdir -- "$incoming"
+          trap 'rm -rf -- "$incoming"; rm -f -- "$archive"' EXIT
+          tar -xzf "$archive" -C "$incoming" --no-same-owner
+          rm -f -- "$archive"
           sudo -n /usr/local/sbin/roversense-activate "$sha"
+          trap - EXIT
           REMOTE
