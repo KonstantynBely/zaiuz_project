@@ -94,20 +94,28 @@ jobs:
         run: python -m unittest discover -s sensor-simulator/tests -v
 
   db-scripts:
-    name: Skrypty przygotowania bazy
+    name: Skrypty instalacji i serwera
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: Kontrola skladni Bash
         run: |
-          bash -n deploy/scripts/install-db.sh
-          bash -n deploy/scripts/bootstrap-db.sh
+          set -euo pipefail
+          for script in deploy/scripts/*.sh server/scripts/* server/config/roversense-activate; do
+            bash -n "$script"
+          done
       - name: Kontrola koncow linii LF
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          for script in Path('deploy/scripts').glob('*.sh'):
-              if 13 in script.read_bytes():
+
+          scripts = [
+              *Path('deploy/scripts').glob('*.sh'),
+              *Path('server/scripts').iterdir(),
+              Path('server/config/roversense-activate'),
+          ]
+          for script in scripts:
+              if script.is_file() and 13 in script.read_bytes():
                   raise SystemExit(f'Nieprawidlowe konce linii CRLF: {script}')
           PY
 
