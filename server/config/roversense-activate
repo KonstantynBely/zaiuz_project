@@ -7,6 +7,7 @@ if [[ $EUID -ne 0 || $# -ne 1 || ! $1 =~ ^[0-9a-f]{40}$ ]]; then
 fi
 
 base=/srv/roversense
+incoming="$base/incoming/$1"
 release="$base/releases/$1"
 current="$base/current"
 next="$base/.current-next"
@@ -17,7 +18,46 @@ flock -n 9 || {
   exit 1
 }
 
-if [[ ! -d $release || -L $release || "$(realpath -e "$release")" != "$release" ]]; then
+if [[ ! -e "$release" && ! -L "$release" ]]; then
+  if [[ ! -d "$incoming" || -L "$incoming" ||
+        "$(realpath -e "$incoming")" != "$incoming" ]]; then
+    echo 'Brak poprawnego katalogu incoming.' >&2
+    exit 1
+  fi
+
+  if [[ "$(stat -c %U "$incoming")" != roversense-deploy ]]; then
+    echo 'Niepoprawny wlasciciel incoming.' >&2
+    exit 1
+  fi
+
+  pending=$(mktemp -d "$base/releases/.pending.XXXXXXXX")
+  trap 'rm -rf -- "$pending"' EXIT
+
+  cp -a -- "$incoming/." "$pending/"
+
+  for file in \
+    backend/dist/server.js \
+    backend/dist/database/migrate.js \
+    backend/node_modules/pg/package.json \
+    frontend/dist/index.html \
+    database/migrations/001_initial.sql; do
+    if [[ ! -f "$pending/$file" ]]; then
+      echo "Brak pliku wydania: $file" >&2
+      exit 1
+    fi
+  done
+
+  chown -R root:root "$pending"
+  chmod -R u=rwX,go=rX "$pending"
+
+  mv -T -- "$pending" "$release"
+  trap - EXIT
+  rm -rf -- "$incoming"
+fi
+
+if [[ ! -d "$release" || -L "$release" ||
+      "$(realpath -e "$release")" != "$release" ||
+      "$(stat -c %U "$release")" != root ]]; then
   echo 'Niepoprawny katalog wydania.' >&2
   exit 1
 fi

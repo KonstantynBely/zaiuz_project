@@ -18,10 +18,10 @@ Publicznie potrzebne są porty 22 (SSH), 80 (HTTP do przekierowania/TLS) i 443 (
 
 ## Katalogi i konta
 
-`/srv/roversense/` zawiera katalog `releases/<SHA>` dla poszczególnych wydań oraz dowiązanie `current` wskazujące aktywne wydanie.
+`/srv/roversense/` zawiera katalog `incoming/<SHA>` na przesyłane wydania, chronione `releases/<SHA>` na zaakceptowane wersje oraz dowiązanie `current` wskazujące aktywne wydanie. Katalog `incoming` ma uprawnienia `0700` i należy do `roversense-deploy`; `releases` i zapisane w nim wydania należą do `root`.
 
 - `roversense` — konto systemowe uruchamiające backend i migracje, bez interaktywnego logowania;
-- `roversense-deploy` — konto do przesyłania paczek przez SSH; ma prawo zapisu w `/srv/roversense/releases`;
+- `roversense-deploy` — konto do przesyłania paczek przez SSH; ma prawo zapisu w `/srv/roversense/incoming`, ale nie w `releases`;
 - `root` — właściciel `/srv/roversense`, chronionych konfiguracji i skryptu aktywacji.
 
 Konto wdrożeniowe korzysta z klucza SSH (bez logowania hasłem). Reguła w `/etc/sudoers.d/roversense-deploy` pozwala mu uruchamiać tylko `/usr/local/sbin/roversense-activate`. Odpowiedni wzorzec jest w [config/roversense-deploy.sudoers](config/roversense-deploy.sudoers).
@@ -75,6 +75,9 @@ Konfiguracje odpowiadają użytym jednostkom:
 | [config/Caddyfile](config/Caddyfile) | `/etc/caddy/Caddyfile` |
 | [config/roversense-deploy.sudoers](config/roversense-deploy.sudoers) | `/etc/sudoers.d/roversense-deploy` |
 | [config/roversense-activate](config/roversense-activate) | `/usr/local/sbin/roversense-activate` |
+| [scripts/roversense-backup](scripts/roversense-backup) | `/usr/local/sbin/roversense-backup` |
+| [config/roversense-backup.service](config/roversense-backup.service) | `/etc/systemd/system/roversense-backup.service` |
+| [config/roversense-backup.timer](config/roversense-backup.timer) | `/etc/systemd/system/roversense-backup.timer` |
 
 `roversense.service` uruchamia `node dist/server.js` jako `roversense` i restartuje proces po awarii. `roversense-migrate.service` jest usługą jednorazową uruchamiającą `node dist/database/migrate.js` z katalogu aktywnego wydania. Nie trzeba jej włączać przez `systemctl enable`.
 
@@ -86,7 +89,7 @@ Po ręcznej zmianie jednostek należy wykonać `sudo systemctl daemon-reload`, a
 
 Workflow [`ci.yml`](../.github/workflows/ci.yml) wykonuje testy backendu z TimescaleDB, testy generatora Pythona, weryfikację skryptów Bash i budowanie Reacta. Przy wdrożeniu wykorzystuje runner Ubuntu ARM64, instaluje zależności produkcyjne backendu i tworzy archiwum ze skompilowanym JavaScriptem, `node_modules`, frontendem `dist`, migracjami oraz generatorem Python.
 
-Gotowa paczka trafia przez SSH do `/srv/roversense/releases/<40-znakowy SHA>`. Skrypt [config/roversense-activate](config/roversense-activate) przełącza `current`, uruchamia migracje, restartuje backend i sprawdza `/api/health`. W przypadku błędu próbuje przywrócić poprzednią wersję aplikacji. **Migracje schematu bazy nie są automatycznie cofane.**
+Gotowa paczka trafia przez SSH do `/srv/roversense/incoming/<40-znakowy SHA>`. Skrypt [config/roversense-activate](config/roversense-activate) kopiuje jej zawartość do `releases`, przypisuje pliki do `root`, przełącza `current`, uruchamia migracje, restartuje backend i sprawdza `/api/health`. W przypadku błędu próbuje przywrócić poprzednią wersję aplikacji. **Migracje schematu bazy nie są automatycznie cofane.**
 
 GitHub Actions używa sekretów `ROVERSENSE_SSH_KEY` i `ROVERSENSE_KNOWN_HOSTS`. Klucze prywatne i zawartość sekretów nie są przechowywane w repozytorium.
 
@@ -110,4 +113,4 @@ Prawidłowa odpowiedź API: `{"status":"ok"}`. Dla strony głównej oczekiwane H
 
 Baza PostgreSQL jest przechowywana niezależnie od katalogów wydań. Przywrócenie kodu do poprzedniej wersji nie oznacza odzyskania danych z bazy.
 
-Automatyczny backup PostgreSQL, test odtwarzania, pełna kontrola zapór OCI/UFW i inicjalizacja konta administratora pozostają osobnymi czynnościami administracyjnymi; nie należy traktować ich jako wykonanych na podstawie samego działającego HTTPS i `/api/health`.
+Na serwerze utworzono prywatny katalog `/var/backups/roversense/postgresql` (właściciel `postgres`, tryb `0700`) oraz wykonano pierwszy ręczny `pg_dump -Fc` i `pg_dumpall --globals-only` (bez testu odtworzenia). Skrypt [scripts/roversense-backup](scripts/roversense-backup) ma tworzyć pełną kopię bazy i ról z sumami SHA-256 oraz usuwać lokalne kopie starsze niż 14 dni. Timer [config/roversense-backup.timer](config/roversense-backup.timer) jest włączony (`active (waiting)`), z uruchomieniem codziennie o **02:30 UTC**; pierwsza planowana próba to 20.10.2026. **Nie potwierdzono jeszcze wykonania backupu przez timer ani możliwości odtworzenia danych.** Backup pozostaje wyłącznie na tej samej maszynie. Kopia poza serwerem, test odtworzenia, audyt zapór OCI/UFW oraz konto administratora pozostają do zrobienia.
