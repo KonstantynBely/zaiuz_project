@@ -11,33 +11,6 @@ permissions:
 
 jobs:
 
-  lockfile-bootstrap:
-    name: Przygotowanie plików zależności npm
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-      - name: Wygenerowanie lockfile backendu i frontendu
-        run: |
-          set -euo pipefail
-          (cd backend && npm install --package-lock-only --ignore-scripts --no-audit --no-fund)
-          (cd frontend && npm install --package-lock-only --ignore-scripts --no-audit --no-fund)
-          git add backend/package-lock.json frontend/package-lock.json
-          git diff --cached --check
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "build: zapisano wersje zależności npm"
-          git push origin "HEAD:refs/heads/$TARGET_BRANCH"
-        env:
-          TARGET_BRANCH: ${{ github.head_ref }}
-
   backend:
     name: Backend i TimescaleDB
     runs-on: ubuntu-latest
@@ -66,7 +39,7 @@ jobs:
         with:
           node-version: '24'
       - name: Instalacja zależności
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
       - name: Kontrola typów
         run: npm run typecheck
       - name: Testy jednostkowe
@@ -97,7 +70,7 @@ jobs:
         with:
           node-version: '24'
       - name: Instalacja zależności
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
       - name: Kontrola typów
         run: npm run typecheck
       - name: Budowanie strony
@@ -177,11 +150,12 @@ jobs:
           set -euo pipefail
           mkdir -p release/backend release/database release/sensor-simulator
           cp backend/package.json release/backend/package.json
+          cp backend/package-lock.json release/backend/package-lock.json
           cp -R database/migrations release/database/migrations
           cp -R sensor-simulator/src release/sensor-simulator/src
           (
             cd release/backend
-            npm install --omit=dev --no-audit --no-fund
+            npm ci --omit=dev --no-audit --no-fund
           )
           test -s release/backend/dist/server.js
           test -s release/backend/dist/database/migrate.js
