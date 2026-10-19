@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+set -euo pipefail
+umask 077
+
+# Wywoływany przez systemd jako postgres. Nie korzysta z sekretów aplikacji.
+if [[ "$(id -un)" != postgres ]]; then
+  echo 'Kopia bazy musi być uruchomiona jako użytkownik postgres.' >&2
+  exit 1
+fi
+
+backup_root=/var/backups/roversense/postgresql
+if [[ ! -d "$backup_root" || -L "$backup_root" ]]; then
+  echo "Brak bezpiecznego katalogu: $backup_root" >&2
+  exit 1
+fi
+
+# Jednocześnie może działać tylko jedna kopia.
+exec 9>/run/lock/roversense-backup.lock
+flock -n 9 || {
+  echo 'Inne tworzenie kopii zapasowej jest w toku.' >&2
+  exit 1
+}
+
+tmp=$(mktemp -d "$backup_root/.pending.XXXXXXXX")
+cleanup() {
+  if [[ -d "$tmp" ]]; then
+    rm -rf -- "$tmp"
+  fi
+}
+trap cleanup EXIT
+
+pg_dump --host=/var/run/postgresql --username=postgres \
+  --dbname=roversense --format=custom \
+  --file="$tmp/roversense.dump"
+
+# Zawiera m.in. role i hashe haseł. Cały katalog kopii ma pozostać prywatny.
+pg_dumpall --host=/var/run/postgresql --username=postgres \
+  --globals-only > "$tmp/globals.sql"
+
+psql -X -A -t -v ON_ERROR_STOP=1 --host=/var/run/postgresql \
+  --username=postgres --dbname=roversense \
+  --command="SELECT current_setting('server_version') || ' | TimescaleDB ' || extversion FROM pg_extension WHERE extname = 'timescaledb';" \
+  > "$tmp/versions.txt"
+
+# Testuje odczyt formatu archiwum, nie zastępuje testowego przywrócenia.
+pg_restore --list "$tmp/roversense.dump" > "$tmp/archive-contents.txt"
+(
+  cd "$tmp"
+  sha256sum roversense.dump globals.sql versions.txt archive-contents.txt > SHA256SUMS
+)
+chmod 0600 "$tmp"/*
+chmod 0700 "$tmp"
+
+stamp=$(date -u +%Y%m%dT%H%M%SZ)
+archive="$backup_root/backup-$stamp-$(basename "$tmp" | cut -c10-)"
+mv -- "$tmp" "$archive"
+echo "Utworzono kopię bazy: $archive"
+
+# Usuwaj wyłącznie stare kopie utworzone przez ten skrypt i tylko po nowym sukcesie.
+find "$backup_root" -mindepth 1 -maxdepth 1 -type d \
+  -name 'backup-20??????T??????Z-*' -mtime +13 -print \
+  -exec rm -rf -- {} +
