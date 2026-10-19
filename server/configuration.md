@@ -110,4 +110,4 @@ Prawidłowa odpowiedź API: `{"status":"ok"}`. Dla strony głównej oczekiwane H
 
 Baza PostgreSQL jest przechowywana niezależnie od katalogów wydań. Przywrócenie kodu do poprzedniej wersji nie oznacza odzyskania danych z bazy.
 
-Automatyczny backup PostgreSQL, test odtwarzania, pełna kontrola zapór OCI/UFW i inicjalizacja konta administratora pozostają osobnymi czynnościami administracyjnymi; nie należy traktować ich jako wykonanych na podstawie samego działającego HTTPS i `/api/health`.
+Skrypty automatycznego backupu PostgreSQL, testowego odtwarzania, monitoringu i kontrolek bezpieczeństwa przygotowano w `server/scripts/` i `server/config/`. **Nie są automatycznie instalowane przez CD.** Jednorazowa instalacja timerów, ich uruchomienie i rzeczywisty test backup/restore, kopia poza VM oraz audyt OCI/UFW nadal wymagają wykonania na serwerze. Instrukcje i checklista: [operations.md](operations.md). Konto administratora aplikacji zostanie utworzone później.
