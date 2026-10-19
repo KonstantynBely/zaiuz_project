@@ -121,7 +121,7 @@ sudo find /srv/roversense/releases -mindepth 1 -maxdepth 1 -type d -printf '%f\n
 Powrót do istniejącego starszego wydania wykonuje się ręcznie (po wyborze odpowiedniego SHA i sprawdzeniu zgodności bazy danych):
 
 ```bash
-sudo /usr/local/sbin/roversense-activate <PELNE_40_ZNAKOWE_SHA>
+sudo /usr/local/sbin/roversense-activate 40_ZNAKOWE_SHA_TUTAJ
 ```
 
 Skrypt uruchamia migracje właściwe dla wybranego wydania, restartuje backend i sprawdza `/api/health`. **Cofnięcie wersji aplikacji nie cofa migracji ani danych w PostgreSQL.** Nie usuwać katalogu aktualnie wskazywanego przez `current`. Nie jest skonfigurowana automatyczna retencja wydań; starsze, nieaktywne katalogi usuwa się dopiero po ocenie możliwości powrotu i zajętości dysku:
