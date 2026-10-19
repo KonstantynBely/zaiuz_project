@@ -39,7 +39,7 @@ pg_restore -l "$tmp/roversense.dump" \
 )
 
 stamp=$(date -u +%Y%m%dT%H%M%SZ)
-dest="$base/backup-$stamp-\${tmp##*.}"
+dest="$base/backup-$stamp-${tmp##*.}"
 
 mv -T "$tmp" "$dest"
 trap - EXIT
