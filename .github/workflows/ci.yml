@@ -10,12 +10,40 @@ permissions:
   contents: read
 
 jobs:
+
+  lockfile-bootstrap:
+    name: Przygotowanie plików zależności npm
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Wygenerowanie lockfile backendu i frontendu
+        run: |
+          set -euo pipefail
+          (cd backend && npm install --package-lock-only --ignore-scripts --no-audit --no-fund)
+          (cd frontend && npm install --package-lock-only --ignore-scripts --no-audit --no-fund)
+          git add backend/package-lock.json frontend/package-lock.json
+          git diff --cached --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "build: zapisano wersje zależności npm"
+          git push origin "HEAD:refs/heads/$TARGET_BRANCH"
+        env:
+          TARGET_BRANCH: ${{ github.head_ref }}
+
   backend:
     name: Backend i TimescaleDB
     runs-on: ubuntu-latest
     services:
       timescaledb:
-        image: timescale/timescaledb:latest-pg17
+        image: timescale/timescaledb:2.30.2-pg17
         env:
           POSTGRES_DB: roversense_test
           POSTGRES_USER: roversense
