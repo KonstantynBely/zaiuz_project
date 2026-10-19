@@ -1,0 +1,25 @@
+[Unit]
+Description=RoverSense Backend
+After=network.target postgresql@17-main.service
+Requires=postgresql@17-main.service
+
+[Service]
+Type=simple
+User=roversense
+Group=roversense
+WorkingDirectory=/srv/roversense/current/backend
+EnvironmentFile=/etc/roversense/backend.env
+ExecStart=/usr/bin/node dist/server.js
+
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target

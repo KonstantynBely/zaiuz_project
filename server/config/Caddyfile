@@ -1,0 +1,14 @@
+roversense.duckdns.org {
+    encode zstd gzip
+
+    @api path /api /api/*
+    handle @api {
+        reverse_proxy 127.0.0.1:3000
+    }
+
+    handle {
+        root * /srv/roversense/current/frontend/dist
+        try_files {path} /index.html
+        file_server
+    }
+}

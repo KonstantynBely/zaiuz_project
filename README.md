@@ -86,4 +86,4 @@ Tryb `live` generuje kolejne próbki w określonym interwale. Generator wysyła 
 
 ## Materiały prowadzącego i hosting
 
-Kontrakt OpenAPI i skrypt testujący znajdują się w katalogu [`instructor/`](instructor/). Założenia serwera Oracle Cloud opisano w [docs/hosting.md](docs/hosting.md).
+Kontrakt OpenAPI i skrypt testujący znajdują się w katalogu [`instructor/`](instructor/). Konfiguracja serwera Oracle Cloud znajduje się w [server/README.md](server/README.md).
