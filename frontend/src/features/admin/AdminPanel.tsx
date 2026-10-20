@@ -1,4 +1,5 @@
 import { useEffect, useId, useState, type FormEvent } from 'react';
+import '../../styles/admin.css';
 import type { Series } from '../../api/client';
 import { adminApi, ApiRequestError, type Sensor, type SeriesInput } from '../../api/admin';
 
