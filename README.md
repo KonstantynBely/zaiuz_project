@@ -36,6 +36,20 @@ Aplikacja jest dostępna pod `http://127.0.0.1:5173`, a REST API pod `http://127
 
 Hasło administratora ustaw przed uruchomieniem `db:seed-admin` w pliku `.env` (minimum 12 znaków). Plik `.env` jest ignorowany przez Git. Jeżeli chcesz użyć PowerShell zamiast Bash, ustaw zmienne środowiskowe ręcznie przed uruchomieniem poleceń. Przy ponownym uruchomieniu `db:seed-admin` hasło zostanie zaktualizowane, a dotychczasowe sesje unieważnione.
 
+## Interfejs Mission Control
+
+Frontend wyświetla serie i pomiary z publicznego API jako marsjański pulpit telemetrii. Dostępne są filtry czasu i serii, wykres wartości odniesionych procentowo do zakresów min/max poszczególnych serii, tabela odczytów, zaznaczanie punktu po wybraniu wiersza oraz widok do wydruku. Pokazywane są maksymalnie 1000 ostatnich pomiarów zwróconych przez API. Część administracyjna nie jest jeszcze dostępna w interfejsie.
+
+Lokalny podgląd wyglądu bez bazy i backendu:
+
+```bash
+cd frontend
+npm ci
+npm run dev
+```
+
+Otwórz `http://127.0.0.1:5173/?preview=1`. W trybie developerskim (`npm run dev`) wyświetlane są wyłącznie przykładowe dane, generowane w przeglądarce; nie są wysyłane do API ani zapisywane w bazie. Aby zobaczyć rzeczywiste odczyty, uruchom backend lokalnie, otwórz stronę bez parametru `preview` i skorzystaj z proxy Vite (`/api` → `127.0.0.1:3000`). Podgląd demonstracyjny jest wyłączony w buildzie produkcyjnym.
+
 ## Backend
 
 Backend pobiera konfigurację z otoczenia procesu: `DATABASE_URL` określa połączenie z PostgreSQL, a `HOST` i `PORT` adres oraz port nasłuchiwania. Na serwerze zmienne te, wraz z `NODE_ENV=production`, są przechowywane w `/etc/roversense/backend.env` (uprawnienia `root:roversense`, `0640`). Przy uruchamianiu backendu należy wczytać te wartości do środowiska procesu, np. przez `EnvironmentFile` w systemd; kod aplikacji nie jest zależny od nazwy ani lokalizacji pliku. Konfiguracja zawierająca hasła nie trafia do Git.
