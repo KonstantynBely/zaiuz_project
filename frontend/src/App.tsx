@@ -162,7 +162,6 @@ function App() {
   const [session, setSession] = useState<{ token: string; expiresAt: number } | null>(null);
   const onLogin = useCallback((token: string, expiresIn: number) => {
     setSession({ token, expiresAt: Date.now() + expiresIn * 1000 });
-    setScreen('series');
   }, []);
   const onUnauthorized = useCallback(() => { setSession(null); }, []);
   const onSeriesChanged = useCallback(() => { setReload(value => value + 1); }, []);
@@ -189,6 +188,13 @@ function App() {
     setScreen('dashboard');
     setMenuOpen(false);
   }
+  useEffect(() => {
+    if (screen !== 'dashboard') return;
+    const anchor = window.location.hash.replace('#', '');
+    if (!['dashboard', 'telemetry', 'records'].includes(anchor)) return;
+    const frame = window.requestAnimationFrame(() => scrollToSection(anchor));
+    return () => window.cancelAnimationFrame(frame);
+  }, [screen]);
 
   useEffect(() => {
     const id = window.setInterval(() => setClock(new Date()), 60_000);

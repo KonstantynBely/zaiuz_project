@@ -40,7 +40,7 @@ Hasło administratora ustaw przed uruchomieniem `db:seed-admin` w pliku `.env` (
 
 Ilustracja w banerze znajduje się w `frontend/src/assets/rover-hero.svg`. To autorski rysunek wektorowy inspirowany wyglądem i ogólną konstrukcją łazików marsjańskich (sześć kół, zawieszenie rocker-bogie, kamera na maszcie i ramię robotyczne), a nie fotografia NASA ani odwzorowanie techniczne konkretnego modelu. Asset można edytować niezależnie od komponentów React.
 
-Frontend wyświetla serie i pomiary z publicznego API jako marsjański pulpit telemetrii. Dostępne są filtry czasu i serii, wykres wartości odniesionych procentowo do zakresów min/max poszczególnych serii, tabela odczytów, zaznaczanie punktu po wybraniu wiersza oraz widok do wydruku. Pokazywane są maksymalnie 1000 ostatnich pomiarów zwróconych przez API. Część administracyjna nie jest jeszcze dostępna w interfejsie.
+Frontend wyświetla serie i pomiary z publicznego API jako marsjański pulpit telemetrii. Dostępne są filtry czasu i serii, wykres wartości odniesionych procentowo do zakresów min/max poszczególnych serii, tabela odczytów, zaznaczanie punktu po wybraniu wiersza oraz widok do wydruku. Pokazywane są maksymalnie 1000 ostatnich pomiarów zwróconych przez API. Po zalogowaniu dostępny jest panel zarządzania seriami i sensorami oraz zmiana hasła administratora. Klucz API czujnika można skopiować tylko bezpośrednio po rejestracji; lista czujników go nie ujawnia. Usuwanie serii usuwa powiązane czujniki i pomiary, dlatego wymaga osobnego potwierdzenia. Token logowania istnieje tylko w pamięci karty, nie w localStorage; odświeżenie strony oznacza konieczność ponownego logowania. Panel Start/Stop symulatorów będzie podłączony osobno.
 
 Lokalny podgląd wyglądu bez bazy i backendu:
 
@@ -51,6 +51,10 @@ npm run dev
 ```
 
 Otwórz `http://127.0.0.1:5173/?preview=1`. W trybie developerskim (`npm run dev`) wyświetlane są wyłącznie przykładowe dane, generowane w przeglądarce; nie są wysyłane do API ani zapisywane w bazie. Aby zobaczyć rzeczywiste odczyty, uruchom backend lokalnie, otwórz stronę bez parametru `preview` i skorzystaj z proxy Vite (`/api` → `127.0.0.1:3000`). Podgląd demonstracyjny jest wyłączony w buildzie produkcyjnym.
+
+Do przetestowania panelu administratora lokalnie potrzebny jest **działający backend z bazą i lokalnym kontem administratora** (zobacz „Uruchomienie lokalne” wyżej). Otwórz aplikację bez `?preview=1`, wybierz „Serie pomiarowe” lub „Czujniki” w menu bocznym i zaloguj się. Zalecany scenariusz: utwórz serię → przypisz czujnik → skopiuj jednorazowy klucz → uruchom generator Python → sprawdź wyniki na dashboardzie → wyrejestruj czujnik. Testuj na lokalnej bazie, nie na danych produkcyjnych.
+
+Interfejs nie udostępnia dodawania ani edytowania pojedynczych pomiarów. Wszystkie dane generator zapisuje przez API czujnika.
 
 ## Backend
 
