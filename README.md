@@ -38,6 +38,8 @@ Hasło administratora ustaw przed uruchomieniem `db:seed-admin` w pliku `.env` (
 
 ## Interfejs Mission Control
 
+Ilustracja w banerze znajduje się w `frontend/src/assets/rover-hero.svg`. To autorski rysunek wektorowy inspirowany wyglądem i ogólną konstrukcją łazików marsjańskich (sześć kół, zawieszenie rocker-bogie, kamera na maszcie i ramię robotyczne), a nie fotografia NASA ani odwzorowanie techniczne konkretnego modelu. Asset można edytować niezależnie od komponentów React.
+
 Frontend wyświetla serie i pomiary z publicznego API jako marsjański pulpit telemetrii. Dostępne są filtry czasu i serii, wykres wartości odniesionych procentowo do zakresów min/max poszczególnych serii, tabela odczytów, zaznaczanie punktu po wybraniu wiersza oraz widok do wydruku. Pokazywane są maksymalnie 1000 ostatnich pomiarów zwróconych przez API. Część administracyjna nie jest jeszcze dostępna w interfejsie.
 
 Lokalny podgląd wyglądu bez bazy i backendu:

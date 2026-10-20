@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { fetchHealth, fetchMeasurements, fetchSeries, type Measurement, type Series } from './api/client';
-import { RoverScene } from './components/RoverScene';
+import roverHero from './assets/rover-hero.svg';
 import './styles/app.css';
 
 type LoadState = 'loading' | 'ready' | 'error';
@@ -263,7 +263,7 @@ function App() {
           {preview && <div className="notice" role="status"><strong>Tryb podglądu UI.</strong> Wyświetlane wartości są wygenerowane lokalnie i nie zostały zapisane w bazie. <button type="button" onClick={returnToApi}>Wróć do danych API</button></div>}
           {status === 'error' && !preview && <div className="notice error" role="alert">Nie udało się połączyć z API: {error}. Uruchom lokalny backend lub sprawdź połączenie. {import.meta.env.DEV && <button type="button" onClick={enablePreview}>Włącz podgląd interfejsu</button>}</div>}
           <section className="hero" aria-label="Przegląd misji RoverSense">
-            <div className="hero-visual"><RoverScene/></div>
+            <div className="hero-visual"><img className="rover-scene" src={roverHero} alt="Ilustracja łazika z sześcioma kołami, masztem kamer i ramieniem robotycznym na Marsie"/></div>
             <div className="hero-copy">
               <span className="hero-kicker">MARS SURFACE OPERATIONS</span>
               <h2>Odkrywaj dane.<br/>Monitoruj każdy sygnał.</h2>
