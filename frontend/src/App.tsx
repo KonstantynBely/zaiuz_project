@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { fetchHealth, fetchMeasurements, fetchSeries, type Measurement, type Series } from './api/client';
 import roverHero from './assets/rover-hero.svg';
+import { adminApi } from './api/admin';
+import { AdminPanel, type AdminView } from './features/admin/AdminPanel';
 import './styles/app.css';
 
 type LoadState = 'loading' | 'ready' | 'error';
@@ -155,6 +157,38 @@ function App() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [clock, setClock] = useState(new Date());
+  const [screen, setScreen] = useState<'dashboard' | AdminView>('dashboard');
+  // Sesja istnieje wyłącznie w pamięci bieżącej karty.
+  const [session, setSession] = useState<{ token: string; expiresAt: number } | null>(null);
+  const onLogin = useCallback((token: string, expiresIn: number) => {
+    setSession({ token, expiresAt: Date.now() + expiresIn * 1000 });
+    setScreen('series');
+  }, []);
+  const onUnauthorized = useCallback(() => { setSession(null); }, []);
+  const onSeriesChanged = useCallback(() => { setReload(value => value + 1); }, []);
+  const onLogout = useCallback(() => {
+    const token = session?.token;
+    setSession(null);
+    if (token) void adminApi.logout(token).catch(() => {
+      // Zamknięcie lokalnej sesji ma pierwszeństwo przy awarii łączności.
+    });
+  }, [session]);
+  useEffect(() => {
+    if (!session) return;
+    const remaining = session.expiresAt - Date.now();
+    if (remaining <= 0) { setSession(null); return; }
+    const timeout = window.setTimeout(() => setSession(null), remaining);
+    return () => window.clearTimeout(timeout);
+  }, [session]);
+  function openAdmin(view: AdminView) {
+    setScreen(view);
+    setMenuOpen(false);
+    if (preview) { setPreview(false); setStatus('loading'); setReload(value => value + 1); }
+  }
+  function openDashboard() {
+    setScreen('dashboard');
+    setMenuOpen(false);
+  }
 
   useEffect(() => {
     const id = window.setInterval(() => setClock(new Date()), 60_000);
@@ -222,22 +256,23 @@ function App() {
     <div className="app-shell">
       <button className={'scrim ' + (menuOpen ? 'is-open' : '')} aria-label="Zamknij menu" onClick={() => setMenuOpen(false)} />
       <aside className={'sidebar ' + (menuOpen ? 'is-open' : '')} aria-label="Menu aplikacji">
-        <a className="brand" href="#dashboard" onClick={() => setMenuOpen(false)}>
+        <a className="brand" href="#dashboard" onClick={openDashboard}>
           <span className="brand-symbol"><Icon name="planet" size={25}/></span>
           <span className="brand-copy"><strong>RoverSense</strong><span>MISSION CONTROL</span></span>
         </a>
         <p className="nav-caption">MONITOROWANIE</p>
         <nav className="side-nav" aria-label="Nawigacja główna">
-          <a className="nav-link active" href="#dashboard" onClick={() => setMenuOpen(false)}><Icon name="dashboard"/>Pulpit misji</a>
-          <a className="nav-link" href="#telemetry" onClick={() => setMenuOpen(false)}><Icon name="chart"/>Wykres telemetrii</a>
-          <a className="nav-link" href="#records" onClick={() => setMenuOpen(false)}><Icon name="clock"/>Dziennik pomiarów</a>
+          <a className={"nav-link " + (screen === "dashboard" ? "active" : "")} href="#dashboard" onClick={openDashboard}><Icon name="dashboard"/>Pulpit misji</a>
+          <a className="nav-link" href="#telemetry" onClick={openDashboard}><Icon name="chart"/>Wykres telemetrii</a>
+          <a className="nav-link" href="#records" onClick={openDashboard}><Icon name="clock"/>Dziennik pomiarów</a>
         </nav>
         <div className="nav-secondary">
           <p className="nav-caption">ADMINISTRACJA</p>
-          <div className="nav-inactive"><Icon name="layers"/>Serie pomiarowe</div>
-          <div className="nav-inactive"><Icon name="radio"/>Czujniki</div>
-          <div className="nav-inactive"><Icon name="settings"/>Symulatory</div>
-          <p className="nav-caption" style={{ marginTop: 11, color: '#758488', letterSpacing: '1px', fontSize: 9 }}>Panel administracyjny — kolejny etap</p>
+          <button className={"nav-link " + (screen === "series" ? "active" : "")} type="button" onClick={() => openAdmin("series")}><Icon name="layers"/>Serie pomiarowe</button>
+          <button className={"nav-link " + (screen === "sensors" ? "active" : "")} type="button" onClick={() => openAdmin("sensors")}><Icon name="radio"/>Czujniki</button>
+          <button className={"nav-link " + (screen === "account" ? "active" : "")} type="button" onClick={() => openAdmin("account")}><Icon name="settings"/>Konto</button>
+          <div className="nav-inactive"><Icon name="activity"/>Symulatory · wkrótce</div>
+          <p className="nav-caption" style={{ marginTop: 11, color: '#758488', letterSpacing: '1px', fontSize: 9 }}>{session ? "Sesja administratora aktywna" : "Wymagane logowanie"}</p>
         </div>
         <div className="sidebar-bottom">
           <span className="mini-label">STACJA KONTROLI</span>
@@ -249,13 +284,16 @@ function App() {
       <div className="workspace">
         <header className="topbar">
           <button className="mobile-menu" type="button" aria-label="Otwórz menu" onClick={() => setMenuOpen(value => !value)}><Icon name="menu"/></button>
-          <div className="breadcrumb"><span>RoverSense</span><span className="slash">/</span><b>Pulpit misji</b></div>
+          <div className="breadcrumb"><span>RoverSense</span><span className="slash">/</span><b>{screen === "dashboard" ? "Pulpit misji" : screen === "series" ? "Serie pomiarowe" : screen === "sensors" ? "Czujniki" : "Konto"}</b></div>
           <div className="topbar-right">
             <span className="utc-time">UTC {new Intl.DateTimeFormat('pl-PL', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }).format(clock)}</span>
             <span className={'status-pill ' + (!isReady ? 'offline' : '')}><span className={'beacon ' + (!isReady ? 'error' : '')}/>{preview ? 'PODGLĄD' : isOnline ? 'API ONLINE' : status === 'loading' ? 'ŁĄCZENIE' : 'API OFFLINE'}</span>
           </div>
         </header>
         <main className="main-content" id="dashboard">
+          {screen !== 'dashboard' ? (
+            <AdminPanel view={screen} token={session?.token ?? null} onLogin={onLogin} onLogout={onLogout} onUnauthorized={onUnauthorized} onSeriesChanged={onSeriesChanged}/>
+          ) : (<>
           <div className="page-intro">
             <div><p className="eyebrow">SYSTEM TELEMETRYCZNY / PRZEGLĄD</p><h1>Centrum kontroli misji</h1><p>Stan systemu i odczyty z zarejestrowanych czujników.</p></div>
             <div className="intro-meta"><Icon name="signal" size={15}/><span>DANE UTC</span><span className="outline-tag">MISSION / RS-01</span></div>
@@ -324,6 +362,7 @@ function App() {
             <div className="table-foot"><span>Wyświetlono {Math.min(filtered.length, 45)} z {filtered.length} wczytanych pomiarów · dane z wybranych serii</span><span>Wszystkie czasy w UTC</span></div>
           </section>
           <footer className="footer"><span>ROVERSENSE / MISSION CONTROL</span><span>System telemetrii · Panel obserwacyjny</span></footer>
+          </>)}
         </main>
       </div>
     </div>
