@@ -7,7 +7,7 @@ import './styles/app.css';
 
 type LoadState = 'loading' | 'ready' | 'error';
 type TimeRange = 'all' | '24h' | '7d' | '30d';
-type IconName = 'dashboard' | 'chart' | 'layers' | 'radio' | 'clock' | 'settings' | 'refresh' | 'arrow' | 'menu' | 'activity' | 'database' | 'planet' | 'signal' | 'print';
+type IconName = 'dashboard' | 'chart' | 'layers' | 'radio' | 'clock' | 'settings' | 'refresh' | 'arrow' | 'menu' | 'activity' | 'database' | 'planet' | 'signal' | 'print' | 'lock';
 
 const timeRanges: { value: TimeRange; label: string }[] = [
   { value: 'all', label: 'Całość' }, { value: '24h', label: '24 h' },
@@ -59,6 +59,7 @@ function Icon({ name, size = 18 }: { name: IconName; size?: number }) {
     planet: <><circle cx="12" cy="12" r="6"/><path d="M2 15c3 3 17 1 20-6"/></>,
     signal: <><path d="M3 19v-3m6 3v-7m6 7V8m6 11V4"/></>,
     print: <><path d="M6 9V3h12v6M6 17H4V9h16v8h-2M6 14h12v7H6z"/></>,
+    lock: <><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3"/></>,
   };
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]}</svg>;
 }
@@ -291,7 +292,7 @@ function App() {
           <strong>RoverSense / Ziemia</strong>
           <span>System monitorowania danych telemetrycznych.</span>
           <div className="signal"><span className={'beacon ' + (!isReady ? 'error' : '')}/><span>{preview ? 'Podgląd lokalny' : isOnline ? 'Połączono z API' : 'Oczekiwanie na API'}</span></div>
-          {!session && <button className="sidebar-login-button" type="button" onClick={() => openAdmin('account')}><Icon name="settings" size={15}/> Zaloguj się</button>}
+          {!session && <button className="sidebar-login-button" type="button" onClick={() => openAdmin('account')}><Icon name="lock" size={15}/> Zaloguj się</button>}
         </div>
       </aside>
       <div className="workspace">
