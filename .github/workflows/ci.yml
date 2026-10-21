@@ -73,6 +73,8 @@ jobs:
         run: npm ci --no-audit --no-fund
       - name: Kontrola typów
         run: npm run typecheck
+      - name: Testy danych dashboardu
+        run: npm run test
       - name: Budowanie strony
         run: npm run build
       - name: Artefakt frontendu
