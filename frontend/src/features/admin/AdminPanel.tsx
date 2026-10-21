@@ -125,6 +125,7 @@ export function AdminPanel({ view, token, onLogin, onLogout, onUnauthorized, onS
   const [sensorName, setSensorName] = useState('');
   const [sensorSeriesId, setSensorSeriesId] = useState('');
   const [newKey, setNewKey] = useState<string | null>(null);
+  const [newKeySeriesId, setNewKeySeriesId] = useState<string | null>(null);
   const [oldPassword, setOldPassword] = useState('');
   const [nextPassword, setNextPassword] = useState('');
   const [repeatPassword, setRepeatPassword] = useState('');
@@ -195,6 +196,7 @@ export function AdminPanel({ view, token, onLogin, onLogout, onUnauthorized, onS
       await execute(async () => {
         const created = await adminApi.createSensor(token!, sensorName.trim(), sensorSeriesId);
         setNewKey(created.apiKey);
+        setNewKeySeriesId(sensorSeriesId);
         setSensorName('');
         setSensorSeriesId('');
       }, 'Zarejestrowano czujnik. Zapisz klucz API przed zamknięciem powiadomienia.');
@@ -223,6 +225,8 @@ export function AdminPanel({ view, token, onLogin, onLogout, onUnauthorized, onS
   }
 
   const currentTitle = view === 'series' ? 'Serie pomiarowe' : view === 'sensors' ? 'Czujniki' : 'Konto administratora';
+  const instructionSeries = series.find(item => String(item.id) === (newKeySeriesId ?? sensorSeriesId)) ?? null;
+  const generatorUrl = window.location.port === '5173' ? 'http://127.0.0.1:3000' : window.location.origin;
   return (
     <div className="admin-view">
       <div className="admin-heading">
@@ -287,9 +291,9 @@ export function AdminPanel({ view, token, onLogin, onLogout, onUnauthorized, onS
             </section>}
             <section className="admin-card" aria-labelledby="generator-heading">
               <span className="admin-card-kicker">SENSOR ZEWNĘTRZNY</span><h2 id="generator-heading">Generator Python</h2>
-              <p className="admin-description">Na komputerze z uruchomionym backendem ustaw klucz w zmiennej <code>ROVERSENSE_SENSOR_KEY</code> i uruchom generator. Adres API możesz zmienić w parametrze <code>--url</code>.</p>
-              <pre className="admin-code"><code>python sensor-simulator/src/generator.py --url http://127.0.0.1:3000 --mode history --pattern random --count 15 --interval 60</code></pre>
-              <p className="admin-helper">Generator zapisuje dane przez POST /api/measurements. Nie udostępniaj klucza w argumentach polecenia.</p>
+              <p className="admin-description">Po rejestracji skopiuj jednorazowy klucz i ustaw go lokalnie w zmiennej środowiskowej <code>ROVERSENSE_SENSOR_KEY</code>. Generator uruchom z katalogu głównego repozytorium. Dostosuj <code>--url</code>, jeśli API działa pod innym adresem.</p>
+              <pre className="admin-code"><code>{'python sensor-simulator/src/generator.py --url ' + generatorUrl + ' --mode history --pattern random --count 15 --interval 60' + (instructionSeries ? ' --min ' + instructionSeries.minValue + ' --max ' + instructionSeries.maxValue : ' --min 0 --max 100')}</code></pre>
+              <p className="admin-helper">{instructionSeries ? 'Podany zakres odpowiada serii: ' + instructionSeries.name + '. ' : 'Wybierz serię w formularzu rejestracji, aby uzupełnić zakres automatycznie. '}Generator zapisuje dane przez POST /api/measurements. Parametr <code>--interval</code> jest podawany w sekundach. Nie wpisuj klucza jako argumentu polecenia ani nie dodawaj go do repozytorium.</p>
             </section>
           </div>
         </div>
