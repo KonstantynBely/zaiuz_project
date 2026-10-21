@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { fetchHealth, fetchMeasurements, fetchSeries, type Measurement, type Series } from './api/client';
 import roverHero from './assets/rover-hero.svg';
 import { adminApi } from './api/admin';
@@ -172,6 +172,34 @@ function App() {
   const [hidden, setHidden] = useState<string[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [compact, setCompact] = useState(() => window.matchMedia('(max-width: 940px)').matches);
+  const menuButton = useRef<HTMLButtonElement>(null);
+  const sidebarElement = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const breakpoint = window.matchMedia('(max-width: 940px)');
+    const update = () => { setCompact(breakpoint.matches); setMenuOpen(false); };
+    breakpoint.addEventListener('change', update);
+    return () => breakpoint.removeEventListener('change', update);
+  }, []);
+  useEffect(() => {
+    if (!compact || !menuOpen) return;
+    const sidebar = sidebarElement.current;
+    sidebar?.querySelector<HTMLElement>('a[href], button:not(:disabled)')?.focus();
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setMenuOpen(false);
+        window.requestAnimationFrame(() => menuButton.current?.focus());
+      }
+      if (event.key !== 'Tab' || !sidebar) return;
+      const tabbables = Array.from(sidebar.querySelectorAll<HTMLElement>('a[href], button:not(:disabled)'));
+      if (!tabbables.length) return;
+      if (event.shiftKey && document.activeElement === tabbables[0]) { event.preventDefault(); tabbables[tabbables.length - 1]?.focus(); }
+      if (!event.shiftKey && document.activeElement === tabbables[tabbables.length - 1]) { event.preventDefault(); tabbables[0]?.focus(); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [compact, menuOpen]);
   const [clock, setClock] = useState(new Date());
   const [screen, setScreen] = useState<'dashboard' | AdminView | 'simulations'>('dashboard');
   // Sesja istnieje wyłącznie w pamięci bieżącej karty.
@@ -346,15 +374,15 @@ function App() {
   return (
     <div className="app-shell">
       <a className="skip-link" href="#dashboard">Przejdź do głównej treści</a>
-      <button className={'scrim ' + (menuOpen ? 'is-open' : '')} aria-label="Zamknij menu" onClick={() => setMenuOpen(false)} />
-      <aside className={'sidebar ' + (menuOpen ? 'is-open' : '')} aria-label="Menu aplikacji">
+      <button className={'scrim ' + (menuOpen ? 'is-open' : '')} aria-label="Zamknij menu" tabIndex={-1} onClick={() => { setMenuOpen(false); menuButton.current?.focus(); }} />
+      <aside ref={sidebarElement} id="mission-navigation" className={'sidebar ' + (menuOpen ? 'is-open' : '')} aria-label="Menu aplikacji" aria-hidden={compact && !menuOpen} inert={compact && !menuOpen}>
         <a className="brand" href="#dashboard" onClick={openDashboard}>
           <span className="brand-symbol"><Icon name="planet" size={25}/></span>
           <span className="brand-copy"><strong>RoverSense</strong><span>MISSION CONTROL</span></span>
         </a>
         <p className="nav-caption">MONITOROWANIE</p>
         <nav className="side-nav" aria-label="Nawigacja główna">
-          <a className={"nav-link " + (screen === "dashboard" ? "active" : "")} href="#dashboard" onClick={openDashboard}><Icon name="dashboard"/>Pulpit misji</a>
+          <a className={"nav-link " + (screen === "dashboard" ? "active" : "")} href="#dashboard" aria-current={screen === 'dashboard' ? 'page' : undefined} onClick={openDashboard}><Icon name="dashboard"/>Pulpit misji</a>
           <a className="nav-link" href="#telemetry" onClick={openDashboard}><Icon name="chart"/>Wykres telemetrii</a>
           <a className="nav-link" href="#records" onClick={openDashboard}><Icon name="clock"/>Dziennik pomiarów</a>
         </nav>
@@ -375,16 +403,16 @@ function App() {
           {!session && <button className="sidebar-login-button" type="button" onClick={() => openAdmin('account')}><Icon name="lock" size={15}/> Zaloguj się</button>}
         </div>
       </aside>
-      <div className="workspace">
+      <div className="workspace" inert={compact && menuOpen} aria-hidden={compact && menuOpen}>
         <header className="topbar">
-          <button className="mobile-menu" type="button" aria-label="Otwórz menu" onClick={() => setMenuOpen(value => !value)}><Icon name="menu"/></button>
+          <button ref={menuButton} className="mobile-menu" type="button" aria-label={menuOpen ? 'Zamknij menu' : 'Otwórz menu'} aria-controls="mission-navigation" aria-expanded={menuOpen} onClick={() => setMenuOpen(value => !value)}><Icon name="menu"/></button>
           <div className="breadcrumb"><span>RoverSense</span><span className="slash">/</span><b>{screen === "dashboard" ? "Pulpit misji" : screen === "series" ? "Serie pomiarowe" : screen === "sensors" ? "Czujniki" : screen === "simulations" ? "Symulatory" : "Konto"}</b></div>
           <div className="topbar-right">
             <span className="utc-time">UTC {new Intl.DateTimeFormat('pl-PL', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }).format(clock)}</span>
             <span className={'status-pill ' + (!isReady ? 'offline' : '')}><span className={'beacon ' + (!isReady ? 'error' : '')}/>{preview ? 'PODGLĄD' : isOnline ? 'API ONLINE' : status === 'loading' ? 'ŁĄCZENIE' : 'API OFFLINE'}</span>
           </div>
         </header>
-        <main className="main-content" id="dashboard">
+        <main className="main-content" id="dashboard" tabIndex={-1}>
           {screen === 'simulations' && session ? (
             <SimulationPanel token={session.token} onUnauthorized={onUnauthorized} onMeasurementsChanged={onSeriesChanged} onOpenDashboard={() => { openDashboard(); setReload(value => value + 1); }}/>
           ) : screen !== 'dashboard' ? (
