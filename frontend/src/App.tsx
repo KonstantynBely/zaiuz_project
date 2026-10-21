@@ -79,7 +79,7 @@ function formatValue(value: number) {
   return new Intl.NumberFormat('pl-PL', { maximumFractionDigits: 2 }).format(value);
 }
 function scrollToSection(id: string) {
-  document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  document.getElementById(id)?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
 }
 
 interface ChartPoint {
@@ -345,6 +345,7 @@ function App() {
 
   return (
     <div className="app-shell">
+      <a className="skip-link" href="#dashboard">Przejdź do głównej treści</a>
       <button className={'scrim ' + (menuOpen ? 'is-open' : '')} aria-label="Zamknij menu" onClick={() => setMenuOpen(false)} />
       <aside className={'sidebar ' + (menuOpen ? 'is-open' : '')} aria-label="Menu aplikacji">
         <a className="brand" href="#dashboard" onClick={openDashboard}>
@@ -414,7 +415,7 @@ function App() {
           <div className="content-grid">
             <section id="telemetry" className="panel" aria-labelledby="chart-heading">
               <div className="panel-heading">
-                <div><p className="eyebrow">ANALIZA / TRENDY</p><h2 id="chart-heading">Przebieg telemetrii</h2><p className="subtle">Wartości na osi Y jako % zakresu każdej serii.</p></div>
+                <div><p className="eyebrow">ANALIZA / TRENDY</p><h2 id="chart-heading">Przebieg telemetrii</h2><p className="subtle">{chartMode === 'raw' ? 'Oś Y przedstawia jednostki wybranej serii.' : 'Wartości na osi Y przedstawiają % zakresu każdej serii.'}</p></div>
                 <div className="panel-controls">
                   <div className="range-tabs" role="group" aria-label="Zakres czasu">
                     {timeRanges.map(option => <button key={option.value} type="button" aria-pressed={range === option.value} onClick={() => { setRange(option.value); setDateError(''); setSelectedId(null); setTablePage(0); }}>{option.label}</button>)}
@@ -480,6 +481,18 @@ function App() {
                 <button type="button" disabled={safePage >= lastPage} onClick={() => setTablePage(page => Math.min(lastPage, page + 1))}>Następna →</button>
               </div>
             </div>
+          </section>
+          <section className="print-report" aria-label="Raport pomiarów do wydruku">
+            <header className="print-report-head">
+              <h2>RoverSense — raport telemetrii</h2>
+              <p>Zakres: {range === 'custom' ? [customDates.from ? formatDate(customDates.from) : 'początek', customDates.to ? formatDate(customDates.to) : 'teraz'].join(' – ') : range === 'all' ? 'wszystkie wczytane pomiary' : range === '24h' ? 'ostatnie 24 godziny' : range === '7d' ? 'ostatnie 7 dni' : 'ostatnie 30 dni'} · Wykres: {chartMode === 'raw' ? 'jednostki serii' : '% zakresu serii'}</p>
+              <p>Widoczne serie: {visibleSeries.map(item => item.name + (item.unit ? ' (' + item.unit + ')' : '')).join(', ') || 'brak'}.</p>
+              <p>{preview ? 'Lokalne dane demonstracyjne. ' : ''}Wydruk obejmuje wszystkie wczytane odczyty spełniające filtry (do 1000 ostatnich wyników pobranych z API). Czas w UTC.</p>
+            </header>
+            <table className="print-table">
+              <thead><tr><th scope="col">Czas pomiaru (UTC)</th>{visibleSeries.map(item => <th scope="col" key={String(item.id)}>{item.name}{item.unit ? ' (' + item.unit + ')' : ''}</th>)}</tr></thead>
+              <tbody>{groupedRows.map(row => <tr key={row.key}><th scope="row">{formatDate(row.timestamp)}</th>{visibleSeries.map(item => <td key={String(item.id)}>{row.cells.has(String(item.id)) ? formatValue(row.cells.get(String(item.id))!.value) : '—'}</td>)}</tr>)}</tbody>
+            </table>
           </section>
           <footer className="footer"><span>ROVERSENSE / MISSION CONTROL</span><span>System telemetrii · Panel obserwacyjny</span></footer>
           </>)}
