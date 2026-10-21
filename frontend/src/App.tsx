@@ -316,6 +316,7 @@ function App() {
     setSelectedId(null);
     setRange('all');
     setHidden([]);
+    setTablePage(0);
   }
   function returnToApi() {
     setPreview(false);
@@ -466,7 +467,7 @@ function App() {
                       const sample = row.cells.get(String(item.id));
                       return <td key={String(item.id)} className={sample ? undefined : 'is-empty'}>{sample ?
                         <button className="measurement-cell-button" type="button" aria-pressed={String(sample.id) === activeSelected}
-                          title={'Zaznacz: ' + item.name + ', ' + formatDate(sample.timestamp)} onClick={() => setSelectedId(String(sample.id))}>{formatValue(sample.value)}</button> : '—'}</td>;
+                          title={'Zaznacz: ' + item.name + ', ' + formatDate(sample.timestamp)} onClick={() => { setSelectedId(String(sample.id)); if (chartMode === 'raw') setRawSeriesId(String(sample.seriesId)); }}>{formatValue(sample.value)}</button> : '—'}</td>;
                     })}
                   </tr>,
                 )}</tbody>
