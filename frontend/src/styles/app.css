@@ -310,3 +310,9 @@ a { color: inherit; text-decoration: none; }
   .print-table thead th { background: #ededed !important; font-weight: bold; }
   .print-table tbody th { font-weight: normal; white-space: nowrap; }
 }
+
+@media print {
+  .print-legend { display: flex; flex-wrap: wrap; gap: 3mm 7mm; padding: 0; margin: 2mm 0 4mm; list-style: none; }
+  .print-legend li { display: inline-flex; align-items: center; gap: 2mm; break-inside: avoid; }
+  .print-legend svg { flex: 0 0 auto; }
+}
