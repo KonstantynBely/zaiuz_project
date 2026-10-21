@@ -94,12 +94,15 @@ jobs:
           curl --fail --silent 'http://127.0.0.1:5173/?preview=1' >/dev/null
           npx --yes lighthouse@12 'http://127.0.0.1:5173/?preview=1' \
             --only-categories=accessibility --chrome-flags="--headless --no-sandbox --disable-dev-shm-usage" \
+            --screenEmulation.width=360 --screenEmulation.height=780 --screenEmulation.deviceScaleFactor=1 \
             --output=json --output-path="$RUNNER_TEMP/roversense-lighthouse.json" --quiet
           node - "$RUNNER_TEMP/roversense-lighthouse.json" <<'NODE'
           const fs = require('node:fs');
           const report = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
           const score = Math.round((report.categories.accessibility.score ?? 0) * 100);
-          console.log('Lighthouse Accessibility (dev preview):', score);
+          const viewport = report.configSettings.screenEmulation.width;
+          console.log('Lighthouse Accessibility (dev preview):', score, '| szerokość:', viewport, 'px');
+          if (viewport !== 360) process.exitCode = 1;
           for (const [id, audit] of Object.entries(report.audits)) {
             if (audit.score === 0 && audit.scoreDisplayMode === 'binary') {
               console.log('Problem:', id, '-', audit.title);
