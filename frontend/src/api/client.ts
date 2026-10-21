@@ -33,6 +33,11 @@ export function fetchSeries(signal?: AbortSignal) {
   return readJson<Series[]>('/api/series', signal);
 }
 
-export function fetchMeasurements(signal?: AbortSignal) {
-  return readJson<Measurement[]>('/api/measurements?sort=-timestamp&limit=1000', signal);
+export interface MeasurementFilters { from?: string; to?: string; series?: Array<string | number> }
+export function fetchMeasurements(signal?: AbortSignal, filters: MeasurementFilters = {}) {
+  const params = new URLSearchParams({ sort: '-timestamp', limit: '1000' });
+  if (filters.from) params.set('from', filters.from);
+  if (filters.to) params.set('to', filters.to);
+  if (filters.series?.length) params.set('series', filters.series.map(String).join(','));
+  return readJson<Measurement[]>('/api/measurements?' + params, signal);
 }
