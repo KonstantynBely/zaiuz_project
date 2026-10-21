@@ -131,7 +131,7 @@ export function AdminPanel({ view, token, onLogin, onLogout, onUnauthorized, onS
   const [repeatPassword, setRepeatPassword] = useState('');
   const sensorNameId = useId();
 
-  useEffect(() => { setNewKey(null); setNotice(''); setError(''); }, [view]);
+  useEffect(() => { setNewKey(null); setNewKeySeriesId(null); setNotice(''); setError(''); }, [view]);
   useEffect(() => {
     if (!token) { setNewKey(null); return; }
     let active = true;
@@ -192,6 +192,7 @@ export function AdminPanel({ view, token, onLogin, onLogout, onUnauthorized, onS
     event.preventDefault();
     if (!sensorName.trim() || !sensorSeriesId) { setError('Podaj nazwę czujnika i wybierz serię.'); return; }
     setNewKey(null);
+    setNewKeySeriesId(null);
     try {
       await execute(async () => {
         const created = await adminApi.createSensor(token!, sensorName.trim(), sensorSeriesId);
@@ -205,6 +206,7 @@ export function AdminPanel({ view, token, onLogin, onLogout, onUnauthorized, onS
   async function revokeSensor(item: Sensor) {
     if (!window.confirm('Wyrejestrować czujnik „' + item.name + '”? Jego klucz przestanie działać, a dotychczasowe pomiary pozostaną.')) return;
     setNewKey(null);
+    setNewKeySeriesId(null);
     try {
       await execute(() => adminApi.deleteSensor(token!, String(item.id)), 'Czujnik został wyrejestrowany.');
     } catch { /* Błąd w panelu. */ }
@@ -225,7 +227,7 @@ export function AdminPanel({ view, token, onLogin, onLogout, onUnauthorized, onS
   }
 
   const currentTitle = view === 'series' ? 'Serie pomiarowe' : view === 'sensors' ? 'Czujniki' : 'Konto administratora';
-  const instructionSeries = series.find(item => String(item.id) === (newKeySeriesId ?? sensorSeriesId)) ?? null;
+  const instructionSeries = series.find(item => String(item.id) === (newKey ? newKeySeriesId : sensorSeriesId)) ?? null;
   const generatorUrl = window.location.port === '5173' ? 'http://127.0.0.1:3000' : window.location.origin;
   return (
     <div className="admin-view">
@@ -287,7 +289,7 @@ export function AdminPanel({ view, token, onLogin, onLogout, onUnauthorized, onS
               <p className="admin-description">Po zamknięciu tej informacji klucz nie będzie dostępny ponownie. Nie przesyłaj go do Git ani nie udostępniaj publicznie.</p>
               <label htmlFor="created-api-key">Klucz czujnika</label>
               <input id="created-api-key" className="key-input" type="text" readOnly spellCheck={false} value={newKey} onFocus={event => event.target.select()} autoComplete="off"/>
-              <div className="admin-actions"><button type="button" className="admin-minor" onClick={() => { if (!navigator.clipboard?.writeText) { setError('Schowek nie jest dostępny. Zaznacz klucz i skopiuj go ręcznie.'); return; } void navigator.clipboard.writeText(newKey).then(() => setNotice('Skopiowano klucz do schowka.')).catch(() => setError('Nie udało się skopiować. Zaznacz klucz i skopiuj go ręcznie.')); }}>Kopiuj klucz</button><button type="button" className="admin-danger" onClick={() => { setNewKey(null); setNotice('Klucz ukryto. Nie można go ponownie odczytać.'); }}>Ukryj klucz</button></div>
+              <div className="admin-actions"><button type="button" className="admin-minor" onClick={() => { if (!navigator.clipboard?.writeText) { setError('Schowek nie jest dostępny. Zaznacz klucz i skopiuj go ręcznie.'); return; } void navigator.clipboard.writeText(newKey).then(() => setNotice('Skopiowano klucz do schowka.')).catch(() => setError('Nie udało się skopiować. Zaznacz klucz i skopiuj go ręcznie.')); }}>Kopiuj klucz</button><button type="button" className="admin-danger" onClick={() => { setNewKey(null); setNewKeySeriesId(null); setNotice('Klucz ukryto. Nie można go ponownie odczytać.'); }}>Ukryj klucz</button></div>
             </section>}
             <section className="admin-card" aria-labelledby="generator-heading">
               <span className="admin-card-kicker">SENSOR ZEWNĘTRZNY</span><h2 id="generator-heading">Generator Python</h2>
