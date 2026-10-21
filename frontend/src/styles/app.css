@@ -42,6 +42,9 @@ a { color: inherit; text-decoration: none; }
 .sidebar-bottom strong { display: block; margin: 8px 0 6px; font-size: 12px; font-weight: 600; color: #d7c4b4; }
 .sidebar-bottom span { color: #89969a; font-size: 11px; line-height: 1.55; }
 .sidebar-bottom .signal { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+.sidebar-login-button { display: flex; align-items: center; justify-content: center; gap: 9px; width: 100%; margin-top: 18px; padding: 11px 13px; background: #192329; border: 1px solid #39474c; border-radius: 8px; color: #bec9c9; font-size: 12px; font-weight: 600; text-align: center; }
+.sidebar-login-button:hover { background: #25343a; border-color: #85654e; color: #f5dcc5; }
+.sidebar-login-button:focus-visible { outline: 2px solid #f5bc8b; outline-offset: 3px; }
 .signal .beacon, .status-pill .beacon { display: inline-block; width: 7px; height: 7px; background: #8cc5ac; border-radius: 50%; box-shadow: 0 0 10px #8cc5ac55; }
 .signal .beacon.error, .status-pill .beacon.error { background: #d99a76; }
 .workspace { flex: 1; min-width: 0; }

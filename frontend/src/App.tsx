@@ -162,12 +162,17 @@ function App() {
   const [session, setSession] = useState<{ token: string; expiresAt: number } | null>(null);
   const onLogin = useCallback((token: string, expiresIn: number) => {
     setSession({ token, expiresAt: Date.now() + expiresIn * 1000 });
+    setScreen('series');
   }, []);
-  const onUnauthorized = useCallback(() => { setSession(null); }, []);
+  const onUnauthorized = useCallback(() => {
+    setSession(null);
+    setScreen('account');
+  }, []);
   const onSeriesChanged = useCallback(() => { setReload(value => value + 1); }, []);
   const onLogout = useCallback(() => {
     const token = session?.token;
     setSession(null);
+    setScreen('dashboard');
     if (token) void adminApi.logout(token).catch(() => {
       // Zamknięcie lokalnej sesji ma pierwszeństwo przy awarii łączności.
     });
@@ -175,10 +180,10 @@ function App() {
   useEffect(() => {
     if (!session) return;
     const remaining = session.expiresAt - Date.now();
-    if (remaining <= 0) { setSession(null); return; }
-    const timeout = window.setTimeout(() => setSession(null), remaining);
+    if (remaining <= 0) { onUnauthorized(); return; }
+    const timeout = window.setTimeout(onUnauthorized, remaining);
     return () => window.clearTimeout(timeout);
-  }, [session]);
+  }, [session, onUnauthorized]);
   function openAdmin(view: AdminView) {
     setScreen(view);
     setMenuOpen(false);
@@ -272,19 +277,21 @@ function App() {
           <a className="nav-link" href="#telemetry" onClick={openDashboard}><Icon name="chart"/>Wykres telemetrii</a>
           <a className="nav-link" href="#records" onClick={openDashboard}><Icon name="clock"/>Dziennik pomiarów</a>
         </nav>
-        <div className="nav-secondary">
-          <p className="nav-caption">ADMINISTRACJA</p>
-          <button className={"nav-link " + (screen === "series" ? "active" : "")} type="button" onClick={() => openAdmin("series")}><Icon name="layers"/>Serie pomiarowe</button>
-          <button className={"nav-link " + (screen === "sensors" ? "active" : "")} type="button" onClick={() => openAdmin("sensors")}><Icon name="radio"/>Czujniki</button>
-          <button className={"nav-link " + (screen === "account" ? "active" : "")} type="button" onClick={() => openAdmin("account")}><Icon name="settings"/>Konto</button>
-          <div className="nav-inactive"><Icon name="activity"/>Symulatory · wkrótce</div>
-          <p className="nav-caption" style={{ marginTop: 11, color: '#758488', letterSpacing: '1px', fontSize: 9 }}>{session ? "Sesja administratora aktywna" : "Wymagane logowanie"}</p>
-        </div>
+        {session && (
+          <div className="nav-secondary">
+            <p className="nav-caption">ADMINISTRACJA</p>
+            <button className={"nav-link " + (screen === "series" ? "active" : "")} type="button" onClick={() => openAdmin("series")}><Icon name="layers"/>Serie pomiarowe</button>
+            <button className={"nav-link " + (screen === "sensors" ? "active" : "")} type="button" onClick={() => openAdmin("sensors")}><Icon name="radio"/>Czujniki</button>
+            <button className={"nav-link " + (screen === "account" ? "active" : "")} type="button" onClick={() => openAdmin("account")}><Icon name="settings"/>Konto</button>
+            <div className="nav-inactive"><Icon name="activity"/>Symulatory · wkrótce</div>
+          </div>
+        )}
         <div className="sidebar-bottom">
           <span className="mini-label">STACJA KONTROLI</span>
           <strong>RoverSense / Ziemia</strong>
           <span>System monitorowania danych telemetrycznych.</span>
           <div className="signal"><span className={'beacon ' + (!isReady ? 'error' : '')}/><span>{preview ? 'Podgląd lokalny' : isOnline ? 'Połączono z API' : 'Oczekiwanie na API'}</span></div>
+          {!session && <button className="sidebar-login-button" type="button" onClick={() => openAdmin('account')}><Icon name="settings" size={15}/> Zaloguj się</button>}
         </div>
       </aside>
       <div className="workspace">
