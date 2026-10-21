@@ -16,6 +16,8 @@ const timeRanges: { value: TimeRange; label: string }[] = [
   { value: '7d', label: '7 dni' }, { value: '30d', label: '30 dni' },
 ];
 
+const DASH_PATTERNS = ['none', '9 5', '3 4', '13 4 3 4'] as const;
+
 const previewSeries: Series[] = [
   { id: 'demo-1', name: 'Temperatura modułu', minValue: -30, maxValue: 60, unit: '°C', color: '#e7a679' },
   { id: 'demo-2', name: 'Wilgotność względna', minValue: 0, maxValue: 100, unit: '%', color: '#78b8ac' },
@@ -91,8 +93,8 @@ interface ChartPoint {
 }
 
 /** Wspólny wykres w % zakresów lub rzeczywiste wartości jednej wybranej serii. */
-function TelemetryChart({ series, measurements, selectedId, raw }: {
-  series: Series[]; measurements: Measurement[]; selectedId: string | null; raw: boolean;
+function TelemetryChart({ series, allSeries, measurements, selectedId, raw }: {
+  series: Series[]; allSeries: Series[]; measurements: Measurement[]; selectedId: string | null; raw: boolean;
 }) {
   const width = 880, height = 275;
   const left = 60, right = 20, top = 21, bottom = 36;
@@ -135,9 +137,9 @@ function TelemetryChart({ series, measurements, selectedId, raw }: {
           return <text key={part} className="grid-label" x={x} y={height - 8} textAnchor={part === 0 ? 'start' : part === 1 ? 'end' : 'middle'}>{labelFor(part)}</text>;
         })}
         {active && <line className="chart-cross" x1={active.x} x2={active.x} y1={top} y2={top + plotH}/>}
-        {pointSets.map((group, index) => (
+        {pointSets.map(group => (
           <g key={String(group.series.id)}>
-            {group.points.length > 1 && <path d={group.points.map((point, i) => (i === 0 ? 'M' : 'L') + point.x.toFixed(2) + ',' + point.y.toFixed(2)).join(' ')} fill="none" stroke={group.series.color} strokeWidth="2.5" strokeDasharray={['none', '9 5', '3 4', '13 4 3 4'][index % 4]} strokeLinecap="round" strokeLinejoin="round"/>}
+            {group.points.length > 1 && <path d={group.points.map((point, i) => (i === 0 ? 'M' : 'L') + point.x.toFixed(2) + ',' + point.y.toFixed(2)).join(' ')} fill="none" stroke={group.series.color} strokeWidth="2.5" strokeDasharray={DASH_PATTERNS[Math.max(0, allSeries.findIndex(item => String(item.id) === String(group.series.id))) % DASH_PATTERNS.length]} strokeLinecap="round" strokeLinejoin="round"/>}
             {group.points.map(point => (
               <g key={point.id}>
                 {point.id === selectedId && <circle cx={point.x} cy={point.y} r="11" stroke={group.series.color} strokeWidth="2" fill="none" opacity=".65"/>}
@@ -470,7 +472,7 @@ function App() {
               </div>
               {status === 'loading' && !preview ? <div className="loading-text" role="status">Pobieranie danych telemetrycznych…</div> :
                 !isReady || series.length === 0 ? <div className="empty-chart"><Icon name="database" size={28}/><strong>Nie ma jeszcze serii pomiarowych</strong><span>Dodaj serie i prześlij pomiary przez API. {import.meta.env.DEV && !preview ? <button type="button" className="section-action" onClick={enablePreview}>Zobacz przykładowy wygląd</button> : null}</span></div> :
-                  <TelemetryChart series={chartSeries} measurements={filtered} selectedId={activeSelected} raw={chartMode === 'raw'}/>}
+                  <TelemetryChart series={chartSeries} allSeries={series} measurements={filtered} selectedId={activeSelected} raw={chartMode === 'raw'}/>}
               <div className="chart-foot"><span>{chartMode === 'raw' ? 'Wykres w jednostkach wybranej serii' : 'Porównanie względem zakresów serii'} · <b>Oś czasu UTC</b></span><span>{preview ? 'Dane demonstracyjne' : streamStatus === 'connected' ? '● Aktualizacja SSE aktywna' : '● SSE: ponawianie połączenia'} · Wybierz wartość w tabeli, by zaznaczyć punkt.</span></div>
             </section>
             <aside className="panel signal-panel" id="series" aria-labelledby="series-heading">
@@ -514,7 +516,13 @@ function App() {
             <header className="print-report-head">
               <h2>RoverSense — raport telemetrii</h2>
               <p>Zakres: {range === 'custom' ? [customDates.from ? formatDate(customDates.from) : 'początek', customDates.to ? formatDate(customDates.to) : 'teraz'].join(' – ') : range === 'all' ? 'wszystkie wczytane pomiary' : range === '24h' ? 'ostatnie 24 godziny' : range === '7d' ? 'ostatnie 7 dni' : 'ostatnie 30 dni'} · Wykres: {chartMode === 'raw' ? 'jednostki serii' : '% zakresu serii'}</p>
-              <p>Widoczne serie: {visibleSeries.map(item => item.name + (item.unit ? ' (' + item.unit + ')' : '')).join(', ') || 'brak'}.</p>
+              <p>Widoczne serie: {visibleSeries.length}.</p>
+              <ul className="print-legend">
+                {visibleSeries.map(item => <li key={String(item.id)}>
+                  <svg viewBox="0 0 42 12" width="42" height="12" aria-hidden="true"><line x1="2" y1="6" x2="40" y2="6" stroke={item.color} strokeWidth="3" strokeDasharray={DASH_PATTERNS[Math.max(0, series.findIndex(s => String(s.id) === String(item.id))) % DASH_PATTERNS.length]}/></svg>
+                  {item.name}{item.unit ? ' (' + item.unit + ')' : ''}
+                </li>)}
+              </ul>
               <p>{preview ? 'Lokalne dane demonstracyjne. ' : ''}Wydruk obejmuje wszystkie wczytane odczyty spełniające filtry (do 1000 ostatnich wyników pobranych z API). Czas w UTC.</p>
             </header>
             <table className="print-table">
