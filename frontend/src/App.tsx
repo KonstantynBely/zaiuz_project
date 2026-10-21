@@ -4,6 +4,7 @@ import roverHero from './assets/rover-hero.svg';
 import { adminApi } from './api/admin';
 import { AdminPanel, type AdminView } from './features/admin/AdminPanel';
 import { SimulationPanel } from './features/admin/SimulationPanel';
+import { groupMeasurements } from './features/dashboard/measurementRows';
 import './styles/app.css';
 
 type LoadState = 'loading' | 'ready' | 'error';
@@ -89,12 +90,12 @@ interface ChartPoint {
   timestamp: string;
 }
 
-/** Serie o różnych jednostkach pokazujemy jako % ich indywidualnego zakresu min/max. */
-function TelemetryChart({ series, measurements, selectedId }: {
-  series: Series[]; measurements: Measurement[]; selectedId: string | null;
+/** Wspólny wykres w % zakresów lub rzeczywiste wartości jednej wybranej serii. */
+function TelemetryChart({ series, measurements, selectedId, raw }: {
+  series: Series[]; measurements: Measurement[]; selectedId: string | null; raw: boolean;
 }) {
   const width = 880, height = 275;
-  const left = 52, right = 20, top = 21, bottom = 36;
+  const left = 60, right = 20, top = 21, bottom = 36;
   const values = measurements.filter(measurement => series.some(s => String(s.id) === String(measurement.seriesId)));
   if (values.length === 0) {
     return <div className="empty-chart"><Icon name="activity" size={27}/><strong>Brak pomiarów w wybranym zakresie</strong><span>Wybierz inne serie lub przedział czasu.</span></div>;
@@ -116,22 +117,27 @@ function TelemetryChart({ series, measurements, selectedId }: {
       .sort((a, b) => a.x - b.x),
   }));
   const active = pointSets.flatMap(group => group.points).find(point => point.id === selectedId);
-  const labelFor = (part: number) => formatShortTime(new Date(minTime + part * span).toISOString());
+  const labelFor = (part: number) => {
+    const date = new Date(minTime + part * span);
+    return new Intl.DateTimeFormat('pl-PL', span >= 86_400_000 ? { month: '2-digit', day: '2-digit', timeZone: 'UTC' } : { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }).format(date);
+  };
+  const valueLabel = (part: number) => raw && series[0] ?
+    formatValue(series[0].maxValue - part * (series[0].maxValue - series[0].minValue)) : Math.round((1 - part) * 100) + '%';
   return (
     <div className="chart-viewport">
-      <svg className="telemetry-chart" viewBox={'0 0 ' + width + ' ' + height} role="img" aria-label="Wykres procentowych wartości pomiarów względem zakresu każdej serii. Szczegółowe wartości w tabeli poniżej.">
+      <svg className="telemetry-chart" viewBox={'0 0 ' + width + ' ' + height} role="img" aria-label={raw ? 'Wykres wartości rzeczywistych wybranej serii. Szczegółowe pomiary znajdują się w tabeli.' : 'Wykres procentowych wartości względem zakresu każdej serii. Szczegóły w tabeli.'}>
         {[0, .25, .5, .75, 1].map(part => {
           const y = top + part * plotH;
-          return <g key={part}><line className="grid-line" x1={left} y1={y} x2={width - right} y2={y}/><text className="grid-label" x={left - 10} y={y + 4} textAnchor="end">{Math.round((1 - part) * 100)}%</text></g>;
+          return <g key={part}><line className="grid-line" x1={left} y1={y} x2={width - right} y2={y}/><text className="grid-label" x={left - 10} y={y + 4} textAnchor="end">{valueLabel(part)}</text></g>;
         })}
         {[0, .25, .5, .75, 1].map(part => {
           const x = left + part * plotW;
           return <text key={part} className="grid-label" x={x} y={height - 8} textAnchor={part === 0 ? 'start' : part === 1 ? 'end' : 'middle'}>{labelFor(part)}</text>;
         })}
         {active && <line className="chart-cross" x1={active.x} x2={active.x} y1={top} y2={top + plotH}/>}
-        {pointSets.map(group => (
+        {pointSets.map((group, index) => (
           <g key={String(group.series.id)}>
-            {group.points.length > 1 && <path d={group.points.map((point, i) => (i === 0 ? 'M' : 'L') + point.x.toFixed(2) + ',' + point.y.toFixed(2)).join(' ')} fill="none" stroke={group.series.color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>}
+            {group.points.length > 1 && <path d={group.points.map((point, i) => (i === 0 ? 'M' : 'L') + point.x.toFixed(2) + ',' + point.y.toFixed(2)).join(' ')} fill="none" stroke={group.series.color} strokeWidth="2.5" strokeDasharray={['none', '9 5', '3 4', '13 4 3 4'][index % 4]} strokeLinecap="round" strokeLinejoin="round"/>}
             {group.points.map(point => (
               <g key={point.id}>
                 {point.id === selectedId && <circle cx={point.x} cy={point.y} r="11" stroke={group.series.color} strokeWidth="2" fill="none" opacity=".65"/>}
@@ -161,6 +167,8 @@ function App() {
   const [dateError, setDateError] = useState('');
   const [streamStatus, setStreamStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting');
   const [tablePage, setTablePage] = useState(0);
+  const [chartMode, setChartMode] = useState<'percent' | 'raw'>('percent');
+  const [rawSeriesId, setRawSeriesId] = useState('');
   const [hidden, setHidden] = useState<string[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -290,10 +298,18 @@ function App() {
     String(item.id), measurements.filter(m => String(m.seriesId) === String(item.id)).length,
   ])), [series, measurements]);
   const activeSelected = filtered.some(item => String(item.id) === selectedId) ? selectedId : null;
+  const chartSeries = chartMode === 'raw' ?
+    visibleSeries.filter(item => String(item.id) === (visibleSeries.some(s => String(s.id) === rawSeriesId) ? rawSeriesId : String(visibleSeries[0]?.id))) : visibleSeries;
+  const groupedRows = useMemo(() => groupMeasurements(visibleSeries, filtered), [visibleSeries, filtered]);
+  const rowsPerPage = 35;
+  const lastPage = Math.max(0, Math.ceil(groupedRows.length / rowsPerPage) - 1);
+  const safePage = Math.min(tablePage, lastPage);
+  const pageRows = groupedRows.slice(safePage * rowsPerPage, (safePage + 1) * rowsPerPage);
 
   function toggleSeries(id: string) {
     setHidden(items => items.includes(id) ? items.filter(item => item !== id) : [...items, id]);
     setSelectedId(null);
+    setTablePage(0);
   }
   function enablePreview() {
     setPreview(true);
@@ -413,12 +429,19 @@ function App() {
                 {dateError && <p className="date-error" role="alert">{dateError}</p>}
               </form>
               <div className="series-toggles" role="group" aria-label="Widoczne serie">
-                {series.map(item => <button key={String(item.id)} className="series-toggle" type="button" aria-pressed={!hidden.includes(String(item.id))} onClick={() => toggleSeries(String(item.id))}><span className="legend-dot" style={{ backgroundColor: item.color }}/>{item.name}</button>)}
+                {series.map((item, index) => <button key={String(item.id)} className="series-toggle" type="button" aria-pressed={!hidden.includes(String(item.id))} onClick={() => toggleSeries(String(item.id))}><span className="legend-dot" style={{ backgroundColor: item.color }}/><span className={'series-glyph style-' + (index % 4)} aria-hidden="true"/> {item.name}</button>)}
+              </div>
+              <div className="chart-mode-controls">
+                <div className="range-tabs" role="group" aria-label="Rodzaj skali wykresu">
+                  <button type="button" aria-pressed={chartMode === 'percent'} onClick={() => setChartMode('percent')}>Porównanie %</button>
+                  <button type="button" aria-pressed={chartMode === 'raw'} onClick={() => setChartMode('raw')}>Wartości rzeczywiste</button>
+                </div>
+                {chartMode === 'raw' && <label className="raw-series-select">Seria <select aria-label="Seria do wykresu rzeczywistych wartości" value={visibleSeries.some(s => String(s.id) === rawSeriesId) ? rawSeriesId : String(visibleSeries[0]?.id ?? '')} onChange={event => setRawSeriesId(event.target.value)}>{visibleSeries.map(item => <option key={String(item.id)} value={String(item.id)}>{item.name} ({item.unit || 'bez jednostki'})</option>)}</select></label>}
               </div>
               {status === 'loading' && !preview ? <div className="loading-text" role="status">Pobieranie danych telemetrycznych…</div> :
                 !isReady || series.length === 0 ? <div className="empty-chart"><Icon name="database" size={28}/><strong>Nie ma jeszcze serii pomiarowych</strong><span>Dodaj serie i prześlij pomiary przez API. {import.meta.env.DEV && !preview ? <button type="button" className="section-action" onClick={enablePreview}>Zobacz przykładowy wygląd</button> : null}</span></div> :
-                  <TelemetryChart series={visibleSeries} measurements={filtered} selectedId={activeSelected}/>}
-              <div className="chart-foot"><span>Wykres porównawczy · <b>Oś czasu UTC</b></span><span>Wybierz pomiar w tabeli, aby zaznaczyć punkt.</span></div>
+                  <TelemetryChart series={chartSeries} measurements={filtered} selectedId={activeSelected} raw={chartMode === 'raw'}/>}
+              <div className="chart-foot"><span>{chartMode === 'raw' ? 'Wykres w jednostkach wybranej serii' : 'Porównanie względem zakresów serii'} · <b>Oś czasu UTC</b></span><span>{preview ? 'Dane demonstracyjne' : streamStatus === 'connected' ? '● Aktualizacja SSE aktywna' : '● SSE: ponawianie połączenia'} · Wybierz wartość w tabeli, by zaznaczyć punkt.</span></div>
             </section>
             <aside className="panel signal-panel" id="series" aria-labelledby="series-heading">
               <div className="panel-heading"><div><p className="eyebrow">SYSTEM / SERIE</p><h2 id="series-heading">Aktywne serie</h2><p className="subtle">Ostatni zarejestrowany odczyt.</p></div></div>
@@ -432,19 +455,30 @@ function App() {
             </aside>
           </div>
           <section className="panel table-panel" id="records" aria-labelledby="records-heading">
-            <div className="panel-heading"><div><p className="eyebrow">ARCHIWUM / ODCZYTY</p><h2 id="records-heading">Dziennik pomiarów</h2><p className="subtle">Kliknij datę odczytu, aby wyróżnić jego punkt na wykresie.</p></div><button className="section-action" type="button" onClick={() => window.print()}><Icon name="print" size={15}/> Drukuj widok</button></div>
-            {filtered.length ? <div className="data-table-wrap">
+            <div className="panel-heading"><div><p className="eyebrow">ARCHIWUM / ODCZYTY</p><h2 id="records-heading">Dziennik pomiarów</h2><p className="subtle">Kliknij wartość w tabeli, aby wyróżnić konkretny punkt na wykresie.</p></div><button className="section-action" type="button" onClick={() => window.print()}><Icon name="print" size={15}/> Drukuj widok</button></div>
+            {groupedRows.length ? <div className="data-table-wrap">
               <table className="data-table">
                 <thead><tr><th scope="col">Czas pomiaru (UTC)</th>{visibleSeries.map(item => <th scope="col" key={String(item.id)}><span className="legend-dot" style={{ display: 'inline-block', marginRight: 9, backgroundColor: item.color }}/>{item.name} {item.unit ? '(' + item.unit + ')' : ''}</th>)}</tr></thead>
-                <tbody>{filtered.slice(0, 45).map(item =>
-                  <tr key={String(item.id)} className={activeSelected === String(item.id) ? 'selected' : undefined}>
-                    <td><button className="time-button" type="button" aria-pressed={activeSelected === String(item.id)} onClick={() => setSelectedId(String(item.id))}>{formatDate(item.timestamp)}</button></td>
-                    {visibleSeries.map(seriesItem => <td key={String(seriesItem.id)} className={String(item.seriesId) !== String(seriesItem.id) ? 'is-empty' : undefined}>{String(item.seriesId) === String(seriesItem.id) ? formatValue(item.value) : '—'}</td>)}
+                <tbody>{pageRows.map(row =>
+                  <tr key={row.key} className={[...row.cells.values()].some(item => String(item.id) === activeSelected) ? 'selected' : undefined}>
+                    <th scope="row" className="measurement-time">{formatDate(row.timestamp)}</th>
+                    {visibleSeries.map(item => {
+                      const sample = row.cells.get(String(item.id));
+                      return <td key={String(item.id)} className={sample ? undefined : 'is-empty'}>{sample ?
+                        <button className="measurement-cell-button" type="button" aria-pressed={String(sample.id) === activeSelected}
+                          title={'Zaznacz: ' + item.name + ', ' + formatDate(sample.timestamp)} onClick={() => setSelectedId(String(sample.id))}>{formatValue(sample.value)}</button> : '—'}</td>;
+                    })}
                   </tr>,
                 )}</tbody>
               </table>
             </div> : <p className="placeholder">{status === 'loading' ? 'Wczytywanie…' : 'Brak pomiarów odpowiadających filtrom.'}</p>}
-            <div className="table-foot"><span>Wyświetlono {Math.min(filtered.length, 45)} z {filtered.length} wczytanych pomiarów · dane z wybranych serii</span><span>Wszystkie czasy w UTC</span></div>
+            <div className="table-foot"><span>Wiersze {groupedRows.length ? safePage * rowsPerPage + 1 : 0}–{Math.min((safePage + 1) * rowsPerPage, groupedRows.length)} z {groupedRows.length} · maks. 1000 pomiarów z API</span>
+              <div className="table-pagination">
+                <button type="button" disabled={safePage === 0} onClick={() => setTablePage(page => Math.max(0, page - 1))}>← Poprzednia</button>
+                <span>Strona {safePage + 1} / {lastPage + 1}</span>
+                <button type="button" disabled={safePage >= lastPage} onClick={() => setTablePage(page => Math.min(lastPage, page + 1))}>Następna →</button>
+              </div>
+            </div>
           </section>
           <footer className="footer"><span>ROVERSENSE / MISSION CONTROL</span><span>System telemetrii · Panel obserwacyjny</span></footer>
           </>)}
