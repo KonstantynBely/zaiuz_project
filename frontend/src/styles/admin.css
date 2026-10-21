@@ -88,3 +88,28 @@
 @media print {
   .admin-view { display: none !important; }
 }
+
+
+/* Sterowanie symulatorami: spójne z pozostałymi panelami administracji. */
+.sim-layout { display: grid; grid-template-columns: minmax(315px, .95fr) minmax(0, 1.05fr); gap: 20px; align-items: start; }
+.sim-configuration { position: relative; }
+.sim-stat-line { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; border-top: 1px solid #34434a; padding: 12px 0; font-size: 12px; color: #aab9b9; }
+.sim-stat-line strong { text-align: right; font: 600 13px 'Space Grotesk', sans-serif; color: #eee1d0; overflow-wrap: anywhere; }
+.sim-state { display: inline-flex; align-items: center; padding: 6px 10px; border: 1px solid #465760; border-radius: 99px; background: #263237; color: #cbd6d5; font: 600 10px 'Space Grotesk',sans-serif; white-space: nowrap; }
+.sim-state.sim-running { border-color: #4e7565; background: #233a31; color: #a9e1c7; }
+.sim-state.sim-failed { border-color: #885047; background: #3d2926; color: #fac1ab; }
+.sim-progress { height: 8px; border-radius: 20px; background: #111c21; border: 1px solid #354248; margin: 18px 0 22px; overflow: hidden; }
+.sim-progress span { height: 100%; display: block; background: linear-gradient(90deg, #8f9f83, #e5a777); transition: width .2s; }
+.sim-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.sim-refresh { color: #829596; font-size: 10px; margin: 22px 0 0; }
+.sim-history-list { display: grid; }
+.sim-history-row { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 11px; border-top: 1px solid #344148; padding: 16px 0; }
+.sim-history-row > div { min-width: 0; display: grid; gap: 6px; }
+.sim-history-row > div:first-child { flex: 1; }
+.sim-history-row strong { font: 600 12px 'Space Grotesk',sans-serif; color: #efdfca; }
+.sim-history-row span:not(.sim-state), .sim-history-row small { color: #90a4a6; font-size: 11px; }
+.sim-history-row > div:last-of-type { justify-items: end; }
+.sim-error-text { flex: 1 0 100%; color: #f1a68a; font-size: 11px; margin: 0; overflow-wrap: anywhere; }
+@media (max-width: 1110px) { .sim-layout { grid-template-columns: 1fr; } }
+@media (max-width: 640px) { .sim-history-row > div:last-of-type { justify-items: start; } .sim-layout { gap: 13px; } }
+@media print { .simulation-view { display: none !important; } }

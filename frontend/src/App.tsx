@@ -3,6 +3,7 @@ import { fetchHealth, fetchMeasurements, fetchSeries, type Measurement, type Ser
 import roverHero from './assets/rover-hero.svg';
 import { adminApi } from './api/admin';
 import { AdminPanel, type AdminView } from './features/admin/AdminPanel';
+import { SimulationPanel } from './features/admin/SimulationPanel';
 import './styles/app.css';
 
 type LoadState = 'loading' | 'ready' | 'error';
@@ -158,7 +159,7 @@ function App() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [clock, setClock] = useState(new Date());
-  const [screen, setScreen] = useState<'dashboard' | AdminView>('dashboard');
+  const [screen, setScreen] = useState<'dashboard' | AdminView | 'simulations'>('dashboard');
   // Sesja istnieje wyłącznie w pamięci bieżącej karty.
   const [session, setSession] = useState<{ token: string; expiresAt: number } | null>(null);
   const onLogin = useCallback((token: string, expiresIn: number) => {
@@ -185,7 +186,7 @@ function App() {
     const timeout = window.setTimeout(onUnauthorized, remaining);
     return () => window.clearTimeout(timeout);
   }, [session, onUnauthorized]);
-  function openAdmin(view: AdminView) {
+  function openAdmin(view: AdminView | 'simulations') {
     setScreen(view);
     setMenuOpen(false);
     if (preview) { setPreview(false); setStatus('loading'); setReload(value => value + 1); }
@@ -284,7 +285,7 @@ function App() {
             <button className={"nav-link " + (screen === "series" ? "active" : "")} type="button" onClick={() => openAdmin("series")}><Icon name="layers"/>Serie pomiarowe</button>
             <button className={"nav-link " + (screen === "sensors" ? "active" : "")} type="button" onClick={() => openAdmin("sensors")}><Icon name="radio"/>Czujniki</button>
             <button className={"nav-link " + (screen === "account" ? "active" : "")} type="button" onClick={() => openAdmin("account")}><Icon name="settings"/>Konto</button>
-            <div className="nav-inactive"><Icon name="activity"/>Symulatory · wkrótce</div>
+            <button className={"nav-link " + (screen === "simulations" ? "active" : "")} type="button" onClick={() => openAdmin("simulations")}><Icon name="activity"/>Symulatory</button>
           </div>
         )}
         <div className="sidebar-bottom">
@@ -298,15 +299,17 @@ function App() {
       <div className="workspace">
         <header className="topbar">
           <button className="mobile-menu" type="button" aria-label="Otwórz menu" onClick={() => setMenuOpen(value => !value)}><Icon name="menu"/></button>
-          <div className="breadcrumb"><span>RoverSense</span><span className="slash">/</span><b>{screen === "dashboard" ? "Pulpit misji" : screen === "series" ? "Serie pomiarowe" : screen === "sensors" ? "Czujniki" : "Konto"}</b></div>
+          <div className="breadcrumb"><span>RoverSense</span><span className="slash">/</span><b>{screen === "dashboard" ? "Pulpit misji" : screen === "series" ? "Serie pomiarowe" : screen === "sensors" ? "Czujniki" : screen === "simulations" ? "Symulatory" : "Konto"}</b></div>
           <div className="topbar-right">
             <span className="utc-time">UTC {new Intl.DateTimeFormat('pl-PL', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }).format(clock)}</span>
             <span className={'status-pill ' + (!isReady ? 'offline' : '')}><span className={'beacon ' + (!isReady ? 'error' : '')}/>{preview ? 'PODGLĄD' : isOnline ? 'API ONLINE' : status === 'loading' ? 'ŁĄCZENIE' : 'API OFFLINE'}</span>
           </div>
         </header>
         <main className="main-content" id="dashboard">
-          {screen !== 'dashboard' ? (
-            <AdminPanel view={screen} token={session?.token ?? null} onLogin={onLogin} onLogout={onLogout} onUnauthorized={onUnauthorized} onSeriesChanged={onSeriesChanged}/>
+          {screen === 'simulations' && session ? (
+            <SimulationPanel token={session.token} onUnauthorized={onUnauthorized} onMeasurementsChanged={onSeriesChanged} onOpenDashboard={() => { openDashboard(); setReload(value => value + 1); }}/>
+          ) : screen !== 'dashboard' ? (
+            <AdminPanel view={screen === 'simulations' ? 'account' : screen} token={session?.token ?? null} onLogin={onLogin} onLogout={onLogout} onUnauthorized={onUnauthorized} onSeriesChanged={onSeriesChanged}/>
           ) : (<>
           <div className="page-intro">
             <div><p className="eyebrow">SYSTEM TELEMETRYCZNY / PRZEGLĄD</p><h1>Centrum kontroli misji</h1><p>Stan systemu i odczyty z zarejestrowanych czujników.</p></div>
