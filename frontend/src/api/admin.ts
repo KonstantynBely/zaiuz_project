@@ -18,6 +18,30 @@ export interface Sensor {
 export interface CreatedSensor extends Sensor { apiKey: string }
 export interface AuthSession { accessToken: string; tokenType: 'Bearer'; expiresIn: number }
 
+export type SimulationState = 'pending' | 'running' | 'stopping' | 'stopped' | 'completed' | 'failed';
+export interface SimulationInput {
+  seriesId: string;
+  name?: string;
+  mode: 'history' | 'live';
+  pattern: 'random' | 'sine';
+  count: number;
+  intervalMs: number;
+  min: number;
+  max: number;
+}
+export interface Simulation {
+  id: string;
+  seriesId: string;
+  sensorId: string | null;
+  state: SimulationState;
+  parameters: Omit<SimulationInput, 'seriesId' | 'name'>;
+  acceptedCount: number;
+  rejectedCount: number;
+  startedAt: string | null;
+  finishedAt: string | null;
+  error: string | null;
+}
+
 export class ApiRequestError extends Error {
   constructor(public readonly status: number, message: string) { super(message); }
 }
@@ -70,4 +94,10 @@ export const adminApi = {
     request<CreatedSensor>('/api/sensors', { method: 'POST', token, body: { name, seriesId } }),
   deleteSensor: (token: string, id: string) =>
     request<void>('/api/sensors/' + encodeURIComponent(id), { method: 'DELETE', token }),
+  listSimulations: (token: string) =>
+    request<Simulation[]>('/api/simulations', { token }),
+  startSimulation: (token: string, input: SimulationInput) =>
+    request<Simulation>('/api/simulations', { token, method: 'POST', body: input }),
+  stopSimulation: (token: string, id: string) =>
+    request<Simulation>('/api/simulations/' + encodeURIComponent(id) + '/stop', { token, method: 'POST' }),
 };
