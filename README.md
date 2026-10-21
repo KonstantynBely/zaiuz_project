@@ -62,6 +62,16 @@ Testy grupowania pomiarów dla dashboardu: `cd frontend && npm run test`. TypeSc
 
 Interfejs nie udostępnia dodawania ani edytowania pojedynczych pomiarów. Wszystkie dane generator zapisuje przez API czujnika.
 
+## Wydruk, dostępność i materiały do dokumentacji
+
+- **Wydruk:** przycisk w dashboardzie drukuje aktywnie skonfigurowany wykres oraz całą **wczytaną** tabelę spełniającą filtry, bez przycisków, formularzy i paginacji. Limit jednorazowego pobrania wynosi 1000 pomiarów z API; wydruk nie oznacza eksportu całej bazy.
+- **Dostępność:** nawigacja „Przejdź do głównej treści”, widoczny fokus, obsługa klawiatury i Escape dla menu mobilnego, inne wzory linii wykresu (nie tylko kolory), etykiety formularzy i komunikaty `role=alert`. Układ posiada media queries od małych szerokości; wynik Lighthouse i realny widok przy 360 px należy potwierdzić w przeglądarce.
+- **Bezpieczeństwo:** nagłówki CSP i inne zabezpieczenia są zdefiniowane w `server/config/Caddyfile`; nie są aktywne na produkcji, dopóki ta wersja nie zostanie wdrożona.
+- **ERD:** [docs/ERD.md](docs/ERD.md) — diagram Mermaid zgodny z migracją bazy.
+- **T5/B3:** [docs/SECURITY.md](docs/SECURITY.md) — opis haszowania haseł i kluczy czujników wraz z dowodami do nagrania.
+
+Materiały końcowe E2 (nagranie, dokumentacja PDF i ZIP) przygotowuje się na podstawie zaakceptowanego, działającego wdrożenia; źródła diagramu i opisu zabezpieczeń nie zastępują tych plików.
+
 ## Backend
 
 Backend pobiera konfigurację z otoczenia procesu: `DATABASE_URL` określa połączenie z PostgreSQL, a `HOST` i `PORT` adres oraz port nasłuchiwania. Na serwerze zmienne te, wraz z `NODE_ENV=production`, są przechowywane w `/etc/roversense/backend.env` (uprawnienia `root:roversense`, `0640`). Przy uruchamianiu backendu należy wczytać te wartości do środowiska procesu, np. przez `EnvironmentFile` w systemd; kod aplikacji nie jest zależny od nazwy ani lokalizacji pliku. Konfiguracja zawierająca hasła nie trafia do Git.
