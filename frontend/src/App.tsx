@@ -258,12 +258,19 @@ function App() {
     const from = range === 'custom' ? customDates.from : range === 'all' ? undefined :
       new Date(Date.now() - (range === '24h' ? 1 : range === '7d' ? 7 : 30) * 86_400_000).toISOString();
     const to = range === 'custom' ? customDates.to : undefined;
-    Promise.all([fetchHealth(controller.signal), fetchSeries(controller.signal), fetchMeasurements(controller.signal, { from, to })])
-      .then(([health, series, measurements]) => {
+    Promise.all([fetchHealth(controller.signal), fetchSeries(controller.signal)])
+      .then(async ([health, loadedSeries]) => {
         if (controller.signal.aborted) return;
         if (health.status !== 'ok') throw new Error('Serwer API nie jest gotowy');
-        setLiveSeries(series);
-        setLiveMeasurements(measurements);
+        const selectedSeriesIds = loadedSeries
+          .filter(item => !hidden.includes(String(item.id)))
+          .map(item => item.id);
+        const loadedMeasurements = selectedSeriesIds.length
+          ? await fetchMeasurements(controller.signal, { from, to, series: selectedSeriesIds })
+          : [];
+        if (controller.signal.aborted) return;
+        setLiveSeries(loadedSeries);
+        setLiveMeasurements(loadedMeasurements);
         setStatus('ready');
         setError('');
       })
@@ -273,7 +280,7 @@ function App() {
         setError(reason instanceof Error ? reason.message : 'Nie udało się pobrać danych');
       });
     return () => controller.abort();
-  }, [preview, reload, range, customDates]);
+  }, [preview, reload, range, customDates, hidden]);
 
   // SSE jest strumieniem powiadomień; po ponownym połączeniu pobieramy brakujące dane przez REST.
   useEffect(() => {
@@ -292,7 +299,7 @@ function App() {
       try {
         const item = JSON.parse(event.data) as Measurement;
         if (!item || typeof item.value !== 'number' || !Number.isFinite(item.value) ||
-            !item.timestamp || !item.id || !item.seriesId) return;
+            !item.timestamp || !item.id || !item.seriesId || hidden.includes(String(item.seriesId))) return;
         setLiveMeasurements(previous => {
           if (previous.some(current => String(current.id) === String(item.id))) return previous;
           return [item, ...previous].sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp)).slice(0, 1000);
@@ -300,7 +307,7 @@ function App() {
       } catch { /* Nieprawidłowa ramka nie zatrzymuje strumienia. */ }
     });
     return () => source.close();
-  }, [preview]);
+  }, [preview, hidden]);
 
   const series = preview ? previewSeries : liveSeries;
   const measurements = preview ? previewMeasurements : liveMeasurements;
