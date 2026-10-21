@@ -7,7 +7,7 @@ import { SimulationPanel } from './features/admin/SimulationPanel';
 import './styles/app.css';
 
 type LoadState = 'loading' | 'ready' | 'error';
-type TimeRange = 'all' | '24h' | '7d' | '30d';
+type TimeRange = 'all' | '24h' | '7d' | '30d' | 'custom';
 type IconName = 'dashboard' | 'chart' | 'layers' | 'radio' | 'clock' | 'settings' | 'refresh' | 'arrow' | 'menu' | 'activity' | 'database' | 'planet' | 'signal' | 'print' | 'lock';
 
 const timeRanges: { value: TimeRange; label: string }[] = [
@@ -155,6 +155,12 @@ function App() {
   const [liveMeasurements, setLiveMeasurements] = useState<Measurement[]>([]);
   const [reload, setReload] = useState(0);
   const [range, setRange] = useState<TimeRange>('all');
+  const [draftFrom, setDraftFrom] = useState('');
+  const [draftTo, setDraftTo] = useState('');
+  const [customDates, setCustomDates] = useState<{ from?: string; to?: string }>({});
+  const [dateError, setDateError] = useState('');
+  const [streamStatus, setStreamStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting');
+  const [tablePage, setTablePage] = useState(0);
   const [hidden, setHidden] = useState<string[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -211,8 +217,12 @@ function App() {
   useEffect(() => {
     if (preview) { setStatus('ready'); setError(''); return; }
     const controller = new AbortController();
-    Promise.all([fetchHealth(controller.signal), fetchSeries(controller.signal), fetchMeasurements(controller.signal)])
+    const from = range === 'custom' ? customDates.from : range === 'all' ? undefined :
+      new Date(Date.now() - (range === '24h' ? 1 : range === '7d' ? 7 : 30) * 86_400_000).toISOString();
+    const to = range === 'custom' ? customDates.to : undefined;
+    Promise.all([fetchHealth(controller.signal), fetchSeries(controller.signal), fetchMeasurements(controller.signal, { from, to })])
       .then(([health, series, measurements]) => {
+        if (controller.signal.aborted) return;
         if (health.status !== 'ok') throw new Error('Serwer API nie jest gotowy');
         setLiveSeries(series);
         setLiveMeasurements(measurements);
@@ -225,17 +235,52 @@ function App() {
         setError(reason instanceof Error ? reason.message : 'Nie udało się pobrać danych');
       });
     return () => controller.abort();
-  }, [preview, reload]);
+  }, [preview, reload, range, customDates]);
+
+  // SSE jest strumieniem powiadomień; po ponownym połączeniu pobieramy brakujące dane przez REST.
+  useEffect(() => {
+    if (preview || typeof EventSource === 'undefined') {
+      setStreamStatus('disconnected');
+      return;
+    }
+    const source = new EventSource('/api/events');
+    let openCount = 0;
+    source.onopen = () => {
+      setStreamStatus('connected');
+      if (openCount++ > 0) setReload(value => value + 1);
+    };
+    source.onerror = () => setStreamStatus('disconnected');
+    source.addEventListener('measurement', (event: MessageEvent<string>) => {
+      try {
+        const item = JSON.parse(event.data) as Measurement;
+        if (!item || typeof item.value !== 'number' || !Number.isFinite(item.value) ||
+            !item.timestamp || !item.id || !item.seriesId) return;
+        setLiveMeasurements(previous => {
+          if (previous.some(current => String(current.id) === String(item.id))) return previous;
+          return [item, ...previous].sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp)).slice(0, 1000);
+        });
+      } catch { /* Nieprawidłowa ramka nie zatrzymuje strumienia. */ }
+    });
+    return () => source.close();
+  }, [preview]);
 
   const series = preview ? previewSeries : liveSeries;
   const measurements = preview ? previewMeasurements : liveMeasurements;
   const visibleSeries = useMemo(() => series.filter(item => !hidden.includes(String(item.id))), [series, hidden]);
   const timeFiltered = useMemo(() => {
     if (range === 'all') return measurements;
+    if (range === 'custom') {
+      const from = customDates.from ? Date.parse(customDates.from) : -Infinity;
+      const to = customDates.to ? Date.parse(customDates.to) : Infinity;
+      return measurements.filter(item => {
+        const stamp = Date.parse(item.timestamp);
+        return stamp >= from && stamp <= to;
+      });
+    }
     const days = range === '24h' ? 1 : range === '7d' ? 7 : 30;
     const cutoff = Date.now() - days * 86_400_000;
     return measurements.filter(item => new Date(item.timestamp).getTime() >= cutoff);
-  }, [measurements, range]);
+  }, [measurements, range, customDates]);
   const filtered = useMemo(
     () => timeFiltered.filter(item => visibleSeries.some(s => String(s.id) === String(item.seriesId))),
     [timeFiltered, visibleSeries],
@@ -264,6 +309,22 @@ function App() {
   }
   const isReady = status === 'ready';
   const isOnline = isReady && !preview;
+  function applyDates(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const from = draftFrom ? new Date(draftFrom).valueOf() : undefined;
+    const to = draftTo ? new Date(draftTo).valueOf() : undefined;
+    if ((from !== undefined && !Number.isFinite(from)) || (to !== undefined && !Number.isFinite(to)) ||
+        (from !== undefined && to !== undefined && from > to) || (!draftFrom && !draftTo)) {
+      setDateError('Wybierz poprawne daty. Początek musi być wcześniejszy niż koniec.');
+      return;
+    }
+    setDateError('');
+    setCustomDates({ ...(from !== undefined ? { from: new Date(from).toISOString() } : {}),
+      ...(to !== undefined ? { to: new Date(to).toISOString() } : {}) });
+    setRange('custom');
+    setSelectedId(null);
+    setTablePage(0);
+  }
 
   return (
     <div className="app-shell">
@@ -331,7 +392,7 @@ function App() {
             <div className="metric-card"><span className="metric-icon"><Icon name="layers"/></span><div className="metric-body"><span className="metric-label">Zarejestrowane serie</span><strong className="metric-value">{isReady ? series.length : '—'}</strong><span className="metric-foot">Konfiguracja pomiarów</span></div></div>
             <div className="metric-card"><span className="metric-icon teal"><Icon name="activity"/></span><div className="metric-body"><span className="metric-label">Wczytane pomiary</span><strong className="metric-value">{isReady ? measurements.length : '—'}</strong><span className="metric-foot">Maksymalnie 1000 z API</span></div></div>
             <div className="metric-card"><span className="metric-icon"><Icon name="clock"/></span><div className="metric-body"><span className="metric-label">Ostatni odczyt</span><strong className="metric-value" style={{ fontSize: 19 }}>{lastMeasurement && isReady ? formatShortTime(lastMeasurement.timestamp) : '—'}</strong><span className="metric-foot">{lastMeasurement && isReady ? formatDate(lastMeasurement.timestamp).split(',')[0] + ' UTC' : 'Brak odczytów'}</span></div></div>
-            <div className="metric-card"><span className="metric-icon teal"><Icon name="signal"/></span><div className="metric-body"><span className="metric-label">Status transmisji</span><strong className="metric-value" style={{ fontSize: 19 }}>{preview ? 'DEMO' : isOnline ? 'ONLINE' : status === 'loading' ? 'ŁĄCZENIE' : 'OFFLINE'}</strong><span className="metric-foot">{preview ? 'Lokalne dane testowe' : isOnline ? 'Połączono z API' : 'Sprawdź API'}</span></div></div>
+            <div className="metric-card"><span className="metric-icon teal"><Icon name="signal"/></span><div className="metric-body"><span className="metric-label">Status transmisji</span><strong className="metric-value" style={{ fontSize: 19 }}>{preview ? 'DEMO' : !isOnline ? 'OFFLINE' : streamStatus === 'connected' ? 'SSE LIVE' : 'REST API'}</strong><span className="metric-foot">{preview ? 'Lokalne dane testowe' : !isOnline ? 'Sprawdź API' : streamStatus === 'connected' ? 'Automatyczny odbiór zdarzeń' : 'Trwa ponowne łączenie SSE'}</span></div></div>
           </section>
           <div className="content-grid">
             <section id="telemetry" className="panel" aria-labelledby="chart-heading">
@@ -339,11 +400,18 @@ function App() {
                 <div><p className="eyebrow">ANALIZA / TRENDY</p><h2 id="chart-heading">Przebieg telemetrii</h2><p className="subtle">Wartości na osi Y jako % zakresu każdej serii.</p></div>
                 <div className="panel-controls">
                   <div className="range-tabs" role="group" aria-label="Zakres czasu">
-                    {timeRanges.map(option => <button key={option.value} type="button" aria-pressed={range === option.value} onClick={() => { setRange(option.value); setSelectedId(null); }}>{option.label}</button>)}
+                    {timeRanges.map(option => <button key={option.value} type="button" aria-pressed={range === option.value} onClick={() => { setRange(option.value); setDateError(''); setSelectedId(null); setTablePage(0); }}>{option.label}</button>)}
                   </div>
                   <button className="icon-button" aria-label="Odśwież dane API" title="Odśwież dane" type="button" onClick={() => { if (!preview) { setStatus('loading'); setReload(value => value + 1); } }} disabled={preview || status === 'loading'}><Icon name="refresh" size={15}/></button>
                 </div>
               </div>
+              <form className="date-range-form" onSubmit={applyDates} aria-label="Własny przedział dat">
+                <label>Od <input type="datetime-local" aria-label="Od (czas lokalny)" value={draftFrom} onChange={event => setDraftFrom(event.target.value)}/></label>
+                <label>Do <input type="datetime-local" aria-label="Do (czas lokalny)" value={draftTo} onChange={event => setDraftTo(event.target.value)}/></label>
+                <button className="section-action date-apply" type="submit">Zastosuj daty</button>
+                <span className="date-help">Daty w czasie lokalnym</span>
+                {dateError && <p className="date-error" role="alert">{dateError}</p>}
+              </form>
               <div className="series-toggles" role="group" aria-label="Widoczne serie">
                 {series.map(item => <button key={String(item.id)} className="series-toggle" type="button" aria-pressed={!hidden.includes(String(item.id))} onClick={() => toggleSeries(String(item.id))}><span className="legend-dot" style={{ backgroundColor: item.color }}/>{item.name}</button>)}
               </div>
