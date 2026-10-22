@@ -1,12 +1,13 @@
 import type { FastifyInstance } from 'fastify';
 import { ApiError } from '../../common/errors.js';
 import { parseId } from '../../common/validation.js';
-import type { SeriesService } from '../series/series.service.js';
-import type { SensorsService } from '../sensors/sensors.service.js';
+import type { SimulationHttpClient } from './simulations.http.js';
 import type { SimulationsRepository, SimulationRow } from './simulations.repository.js';
 import type { SimulationInput, SimulationParameters, SimulationState } from './simulations.schema.js';
+import { loadMetarTemperatures, type MetarStation, type ObservedPoint } from './metar.source.js';
 
 interface Job { controller:AbortController; finished:Promise<void> }
+export const MAX_CONCURRENT_SIMULATIONS = 4;
 
 function expose(row:SimulationRow) {
   return {
@@ -38,14 +39,18 @@ function pause(ms:number,signal:AbortSignal):Promise<void> {
 
 /** Jednoproceseowy wykonawca trzyma klucz tylko w pamięci do końca zadania. */
 export function createSimulationsService(
-  app:FastifyInstance, repo:SimulationsRepository, series:SeriesService,sensors:SensorsService,
+  app:FastifyInstance, repo:SimulationsRepository, sensorApi:SimulationHttpClient,
+  loadObserved: (station: MetarStation) => Promise<ObservedPoint[]> = loadMetarTemperatures,
 ) {
   const jobs=new Map<string,Job>();
-  let starting=false;
+  // Rezerwacje obejmują żądania Start, które wciąż pobierają dane lub tworzą sensor.
+  // Zwiększamy licznik synchronicznie przed pierwszym await, więc żądania nie omijają limitu.
+  let pendingStarts=0;
 
-  async function execute(id:string,sensorId:string,key:string,params:SimulationParameters,signal:AbortSignal) {
+  async function execute(id:string,sensorId:string,key:string,params:SimulationParameters,signal:AbortSignal, observations:ObservedPoint[] | null) {
     let finalState:SimulationState='completed';
     let errorMessage:string|undefined;
+    let accepted=0;
     try {
       await repo.changeState(id,'running');
       const address=app.server.address();
@@ -54,9 +59,10 @@ export function createSimulationsService(
       const baseline=Date.now();
       for(let i=0;i<params.count;i++) {
         if(signal.aborted){finalState='stopped';break;}
-        const value=makeValue(params,i);
+        const value=observations ? observations[i]!.value : makeValue(params,i);
         const timestamp=params.mode==='history' ?
-          new Date(baseline-(params.count-i)*params.intervalMs).toISOString() : undefined;
+          observations ? observations[i]!.timestamp :
+            new Date(baseline-(params.count-i)*params.intervalMs).toISOString() : undefined;
         const res=await fetch(url,{
           method:'POST',headers:{'Content-Type':'application/json','X-API-Key':key},
           body:JSON.stringify({value,...(timestamp?{timestamp}:{})}),signal,
@@ -64,14 +70,25 @@ export function createSimulationsService(
         // Zwolnij połączenie HTTP po każdym POST, zanim wykonawca przejdzie dalej.
         await res.arrayBuffer();
         await repo.count(id,res.ok);
+        if (res.ok) accepted++;
         if(!res.ok && res.status===401)throw new Error('Klucz czujnika został unieważniony');
         if(i<params.count-1 && params.mode==='live')await pause(params.intervalMs,signal);
+      }
+      if (finalState==='completed' && accepted===0) {
+        finalState='failed';
+        errorMessage='Wszystkie pomiary zostały odrzucone przez API. Sprawdź zakres serii i historię odrzuconych pomiarów.';
       }
     } catch(error) {
       finalState=signal.aborted?'stopped':'failed';
       errorMessage=error instanceof Error?error.message:'Nieznany błąd symulacji';
     } finally {
-      try {await sensors.revoke(sensorId);} catch { /* Sensor może zostać usunięty razem z serią. */ }
+      try {
+        await sensorApi.revokeSensor(sensorId);
+      } catch (error) {
+        app.log.error({ err:error, sensorId }, 'Nie udało się wyrejestrować sensora przez REST');
+        finalState='failed';
+        errorMessage='Nie udało się wyrejestrować czujnika przez REST API.';
+      }
       try {await repo.changeState(id,finalState,errorMessage);} catch { /* Seria mogła zostać usunięta. */ }
       jobs.delete(id);
     }
@@ -84,26 +101,60 @@ export function createSimulationsService(
       return expose(row);
     },
     async start(input:SimulationInput) {
-      if(starting||jobs.size>0)throw new ApiError(409,'Można uruchomić jedną symulację naraz');
-      starting=true;
+      if(jobs.size+pendingStarts>=MAX_CONCURRENT_SIMULATIONS) {
+        throw new ApiError(409,'Osiągnięto limit czterech aktywnych lub przygotowywanych symulacji.');
+      }
+      pendingStarts++;
       try {
         const seriesId=parseId(String(input.seriesId));
-        const target=await series.get(seriesId);
+        const target=await sensorApi.getSeries(seriesId);
+        const observed = input.pattern === 'observed';
+        if (observed && !input.station) throw new ApiError(422, 'Wybierz stację pomiarową.');
+        if (!observed && input.station) throw new ApiError(422, 'Stacja jest dostępna tylko dla obserwacji METAR.');
+        if (observed && !['°C', 'C'].includes(target.unit ?? '')) {
+          throw new ApiError(422, 'Obserwacje temperatury wymagają serii w °C.');
+        }
+        // Pobranie danych odbywa się na starcie, przed rejestracją sensora.
+        const observations = observed ? await loadObserved(input.station!) : null;
+        if (observations && observations.length === 0) throw new ApiError(422, 'Brak dostępnych obserwacji.');
+        if (observations) {
+          // Odrzucenie przed POST /api/sensors: nie tworzymy czujnika,
+          // którego rzeczywiste pomiary nie mogą zostać zapisane.
+          const values=observations.map(point=>point.value);
+          if (values.some(value=>!Number.isFinite(value))) {
+            throw new ApiError(422,'Źródło METAR zwróciło nieprawidłowe wartości temperatury.');
+          }
+          const observedMin=Math.min(...values);
+          const observedMax=Math.max(...values);
+          if (observedMin<target.minValue || observedMax>target.maxValue) {
+            throw new ApiError(422,
+              `Odczyty METAR (${observedMin}–${observedMax} °C) wykraczają poza zakres wybranej serii (${target.minValue}–${target.maxValue} °C). Zmień zakres serii lub wybierz inne źródło.`);
+          }
+        }
         const params:SimulationParameters={
           mode:input.mode,pattern:input.pattern,
-          count:input.count??60,intervalMs:input.intervalMs??1000,
-          min:input.min??target.minValue,max:input.max??target.maxValue,
+          count:observations ? observations.length : input.count??60,
+          intervalMs:input.intervalMs??1000,
+          min:observed ? target.minValue : input.min??target.minValue,
+          max:observed ? target.maxValue : input.max??target.maxValue,
+          ...(observed ? {station:input.station!,source:'AWC METAR' as const} : {}),
         };
-        rangeCheck(params,target);
-        const sensor=await sensors.register({name:input.name??`Symulator ${new Date().toISOString()}`,seriesId});
+        if (!observed) rangeCheck(params,target);
+        const sensor=await sensorApi.registerSensor(input.name??`Symulator ${new Date().toISOString()}`,seriesId);
         let row:SimulationRow;
         try {row=await repo.create(seriesId,sensor.id,params);}
-        catch(error){await sensors.revoke(sensor.id);throw error;}
+        catch(error) {
+          try {await sensorApi.revokeSensor(sensor.id);}
+          catch (revokeError) {
+            app.log.error({ err:revokeError, sensorId:sensor.id }, 'Nie udało się wyrejestrować sensora po błędzie tworzenia symulacji');
+          }
+          throw error;
+        }
         const controller=new AbortController();
-        const finished=execute(row.id,sensor.id,sensor.apiKey,params,controller.signal);
+        const finished=execute(row.id,sensor.id,sensor.apiKey,params,controller.signal,observations);
         jobs.set(row.id,{controller,finished});
         return expose(row);
-      } finally {starting=false;}
+      } finally {pendingStarts--;}
     },
     async stop(id:string) {
       const numeric=parseId(id);

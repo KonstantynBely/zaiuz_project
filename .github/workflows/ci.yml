@@ -73,8 +73,51 @@ jobs:
         run: npm ci --no-audit --no-fund
       - name: Kontrola typów
         run: npm run typecheck
+      - name: Testy danych dashboardu
+        run: npm run test
       - name: Budowanie strony
         run: npm run build
+      - name: Lighthouse Accessibility (podgląd lokalny, mobile)
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run dev -- --host 127.0.0.1 > "$RUNNER_TEMP/roversense-vite.log" 2>&1 &
+          dev_pid="$!"
+          trap 'kill "$dev_pid" 2>/dev/null || true' EXIT
+          for attempt in {1..40}; do
+            if curl --fail --silent 'http://127.0.0.1:5173/?preview=1' >/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          curl --fail --silent 'http://127.0.0.1:5173/?preview=1' >/dev/null
+          npx --yes lighthouse@12 'http://127.0.0.1:5173/?preview=1' \
+            --only-categories=accessibility --chrome-flags="--headless --no-sandbox --disable-dev-shm-usage" \
+            --screenEmulation.width=360 --screenEmulation.height=780 --screenEmulation.deviceScaleFactor=1 \
+            --output=json --output-path="$RUNNER_TEMP/roversense-lighthouse.json" --quiet
+          node - "$RUNNER_TEMP/roversense-lighthouse.json" <<'NODE'
+          const fs = require('node:fs');
+          const report = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+          const score = Math.round((report.categories.accessibility.score ?? 0) * 100);
+          const viewport = report.configSettings.screenEmulation.width;
+          console.log('Lighthouse Accessibility (dev preview):', score, '| szerokość:', viewport, 'px');
+          if (viewport !== 360) process.exitCode = 1;
+          for (const [id, audit] of Object.entries(report.audits)) {
+            if (audit.score === 0 && audit.scoreDisplayMode === 'binary') {
+              console.log('Problem:', id, '-', audit.title);
+            }
+          }
+          if (score < 90) process.exitCode = 1;
+          NODE
+      - name: Raport Lighthouse
+        if: ${{ always() && github.event_name == 'pull_request' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: roversense-lighthouse-dev
+          path: ${{ runner.temp }}/roversense-lighthouse.json
+          if-no-files-found: warn
+          retention-days: 3
       - name: Artefakt frontendu
         uses: actions/upload-artifact@v4
         with:

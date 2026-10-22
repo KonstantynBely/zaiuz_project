@@ -8,7 +8,7 @@ const titles: Record<number, string> = {
   400: 'Niepoprawne żądanie', 401: 'Brak autoryzacji', 403: 'Brak dostępu',
   404: 'Nie znaleziono zasobu', 406: 'Nieakceptowany format odpowiedzi',
   409: 'Konflikt', 415: 'Nieobsługiwany format danych',
-  422: 'Niepoprawna wartość', 500: 'Błąd serwera',
+  422: 'Niepoprawna wartość', 500: 'Błąd serwera', 502: 'Błąd komunikacji z usługą', 503: 'Usługa chwilowo niedostępna',
 };
 
 /** Wspólna obsługa RFC 9457 bez ujawniania danych dostępowych lub stosów wywołań. */

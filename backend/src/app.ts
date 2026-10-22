@@ -1,3 +1,5 @@
+import { randomBytes, timingSafeEqual } from 'node:crypto';
+import type { MetarStation, ObservedPoint } from './modules/simulations/metar.source.js';
 import Fastify from 'fastify';
 import type { FastifyInstance, preHandlerHookHandler } from 'fastify';
 import type { Pool } from 'pg';
@@ -18,15 +20,17 @@ import { createMeasurementsService } from './modules/measurements/measurements.s
 import { measurementsRoutes } from './modules/measurements/measurements.routes.js';
 import { createSimulationsRepository } from './modules/simulations/simulations.repository.js';
 import { createSimulationsService } from './modules/simulations/simulations.service.js';
+import { createSimulationHttpClient } from './modules/simulations/simulations.http.js';
 import { simulationsRoutes } from './modules/simulations/simulations.routes.js';
 import { createEventsService } from './modules/events/events.service.js';
 import { eventsRoutes } from './modules/events/events.routes.js';
 
 /** Composition root: zależności można wstrzykiwać w testach bez tworzenia globalnego Pool. */
-export function buildApp(options:{pool?:Pool}={}):FastifyInstance {
+export function buildApp(options:{pool?:Pool;loadObserved?:(station:MetarStation)=>Promise<ObservedPoint[]>}={}):FastifyInstance {
   const app=Fastify({forceCloseConnections:'idle',logger:{redact:[
     'req.headers.authorization','req.headers.x-api-key','request.headers.authorization',
-    'request.headers.x-api-key','res.headers.set-cookie',
+    'request.headers.x-api-key','req.headers.x-roversense-worker-key',
+    'request.headers.x-roversense-worker-key','res.headers.set-cookie',
   ]}});
   registerErrorHandling(app);
   app.addHook('onRequest',async(request,reply)=>{
@@ -53,14 +57,31 @@ export function buildApp(options:{pool?:Pool}={}):FastifyInstance {
     const pool=options.pool;
     const authService=createAuthService(createAuthRepository(pool));
     const adminGuard:preHandlerHookHandler=async request=>{await authService.requireAdmin(bearerToken(request));};
+    // Klucz jest jednorazowy dla procesu, zna go tylko lokalny klient REST symulatora.
+    // Dostęp wyłącznie przez loopback i wyłącznie do POST/DELETE czujników.
+    const workerKey=randomBytes(32).toString('hex');
+    const workerKeyBytes=Buffer.from(workerKey);
+    const sensorWriteGuard:preHandlerHookHandler=async request=>{
+      const supplied=request.headers['x-roversense-worker-key'];
+      const address=app.server.address();
+      const local=['127.0.0.1','::1','::ffff:127.0.0.1'].includes(request.ip);
+      // Żądanie przez publiczny Caddy ma inną nazwę Host, choć proxy też działa na localhost.
+      const direct=address && typeof address!=='string' &&
+        request.headers.host===`127.0.0.1:${address.port}`;
+      if (local && direct && typeof supplied==='string') {
+        const candidate=Buffer.from(supplied);
+        if (candidate.length===workerKeyBytes.length && timingSafeEqual(candidate,workerKeyBytes)) return;
+      }
+      await authService.requireAdmin(bearerToken(request));
+    };
     const seriesService=createSeriesService(createSeriesRepository(pool));
     const sensorService=createSensorsService(createSensorsRepository(pool));
     const measureService=createMeasurementsService(createMeasurementsRepository(pool),events.publish);
     app.register(async instance=>authRoutes(instance,authService,adminGuard));
     app.register(async instance=>seriesRoutes(instance,seriesService,adminGuard));
-    app.register(async instance=>sensorsRoutes(instance,sensorService,adminGuard));
+    app.register(async instance=>sensorsRoutes(instance,sensorService,adminGuard,sensorWriteGuard));
     app.register(async instance=>measurementsRoutes(instance,measureService));
-    const simulations=createSimulationsService(app,createSimulationsRepository(pool),seriesService,sensorService);
+    const simulations=createSimulationsService(app,createSimulationsRepository(pool),createSimulationHttpClient(app,workerKey),options.loadObserved);
     app.register(async instance=>simulationsRoutes(instance,simulations,adminGuard));
     app.addHook('preClose',async()=>{await simulations.close();});
   }
