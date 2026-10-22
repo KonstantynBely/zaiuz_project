@@ -44,7 +44,9 @@ export function createSimulationsService(
   loadObserved: (station: MetarStation) => Promise<ObservedPoint[]> = loadMetarTemperatures,
 ) {
   const jobs=new Map<string,Job>();
-  let starting=false;
+  // Rezerwacje obejmują żądania Start, które wciąż pobierają dane lub tworzą sensor.
+  // Zwiększamy licznik synchronicznie przed pierwszym await, więc żądania nie omijają limitu.
+  let pendingStarts=0;
 
   async function execute(id:string,sensorId:string,key:string,params:SimulationParameters,signal:AbortSignal, observations:ObservedPoint[] | null) {
     let finalState:SimulationState='completed';
@@ -88,8 +90,10 @@ export function createSimulationsService(
       return expose(row);
     },
     async start(input:SimulationInput) {
-      if(starting||jobs.size>=MAX_CONCURRENT_SIMULATIONS)throw new ApiError(409,'Osiągnięto limit czterech aktywnych symulacji.');
-      starting=true;
+      if(jobs.size+pendingStarts>=MAX_CONCURRENT_SIMULATIONS) {
+        throw new ApiError(409,'Osiągnięto limit czterech aktywnych lub przygotowywanych symulacji.');
+      }
+      pendingStarts++;
       try {
         const seriesId=parseId(String(input.seriesId));
         const target=await series.get(seriesId);
@@ -119,7 +123,7 @@ export function createSimulationsService(
         const finished=execute(row.id,sensor.id,sensor.apiKey,params,controller.signal,observations);
         jobs.set(row.id,{controller,finished});
         return expose(row);
-      } finally {starting=false;}
+      } finally {pendingStarts--;}
     },
     async stop(id:string) {
       const numeric=parseId(id);
