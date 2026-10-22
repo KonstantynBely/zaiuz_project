@@ -390,11 +390,11 @@ function App() {
         <nav className="side-nav" aria-label="Nawigacja główna">
           <a className={"nav-link " + (screen === "dashboard" ? "active" : "")} href="#dashboard" aria-current={screen === 'dashboard' ? 'page' : undefined} onClick={openDashboard}><Icon name="dashboard"/>Pulpit</a>
           <a className="nav-link" href="#telemetry" onClick={openDashboard}><Icon name="chart"/>Wykres pomiarów</a>
-          <a className="nav-link" href="#records" onClick={openDashboard}><Icon name="clock"/>Dziennik pomiarów</a>
+          <a className="nav-link" href="#records" onClick={openDashboard}><Icon name="clock"/>Historia pomiarów</a>
         </nav>
         {session && (
           <div className="nav-secondary">
-            <p className="nav-caption">ADMINISTRACJA</p>
+            <p className="nav-caption">Zarządzanie</p>
             <button className={"nav-link " + (screen === "series" ? "active" : "")} type="button" onClick={() => openAdmin("series")}><Icon name="layers"/>Serie pomiarowe</button>
             <button className={"nav-link " + (screen === "sensors" ? "active" : "")} type="button" onClick={() => openAdmin("sensors")}><Icon name="radio"/>Czujniki</button>
             <button className={"nav-link " + (screen === "simulations" ? "active" : "")} type="button" onClick={() => openAdmin("simulations")}><Icon name="activity"/>Symulatory</button>
@@ -437,7 +437,7 @@ function App() {
           <section className="metric-grid" aria-label="Podsumowanie pomiarów">
             <div className="metric-card"><span className="metric-icon"><Icon name="layers"/></span><div className="metric-body"><span className="metric-label">Serie pomiarowe</span><strong className="metric-value">{isReady ? series.length : '—'}</strong></div></div>
             <div className="metric-card"><span className="metric-icon teal"><Icon name="activity"/></span><div className="metric-body"><span className="metric-label" title="Liczba wczytanych pomiarów, maksymalnie 1000 w jednym zapytaniu">Wczytane pomiary</span><strong className="metric-value">{isReady ? measurements.length : '—'}</strong></div></div>
-            <div className="metric-card"><span className="metric-icon"><Icon name="clock"/></span><div className="metric-body"><span className="metric-label">Ostatni odczyt</span><strong className="metric-value metric-time">{lastMeasurement && isReady ? formatShortTime(lastMeasurement.timestamp) : '—'}</strong></div></div>
+            <div className="metric-card"><span className="metric-icon"><Icon name="clock"/></span><div className="metric-body"><span className="metric-label">Ostatni odczyt</span><strong className="metric-value metric-time" title={lastMeasurement && isReady ? 'Czas UTC: ' + formatDate(lastMeasurement.timestamp) : undefined}>{lastMeasurement && isReady ? formatShortTime(lastMeasurement.timestamp) : '—'}</strong></div></div>
           </section>
           <div className="content-grid">
             <section id="telemetry" className="panel" aria-labelledby="chart-heading">
