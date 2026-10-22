@@ -26,6 +26,12 @@ test('Symulacja przez REST tworzy dedykowany sensor, przesyła i zachowuje wynik
     }
     return observedSamples;
   }});
+  const restCalls={register:0,revoke:0};
+  app.addHook('onRequest',async request=>{
+    if (typeof request.headers['x-roversense-worker-key'] !== 'string') return;
+    if (request.method==='POST' && request.url==='/api/sensors') restCalls.register++;
+    if (request.method==='DELETE' && /^\/api\/sensors\/[1-9]\d*$/.test(request.url)) restCalls.revoke++;
+  });
   const name=`simulation_test_${Date.now()}_${Math.floor(Math.random()*1e9)}`;
   let adminId:string|null=null;let seriesId:string|null=null;
   try {
@@ -43,6 +49,11 @@ test('Symulacja przez REST tworzy dedykowany sensor, przesyła i zachowuje wynik
     const unauthorized=await app.inject({method:'POST',url:'/api/simulations',
       payload:{seriesId,mode:'history',pattern:'sine',count:3,intervalMs:200}});
     assert.equal(unauthorized.statusCode,401);
+    // Sam nagłówek lokalnego workera nie daje uprawnień zewnętrznemu klientowi.
+    const fakeWorker=await app.inject({method:'POST',url:'/api/sensors',
+      headers:{'x-roversense-worker-key':'nieuprawniony-testowy-klucz'},
+      payload:{name:'Odrzucony sensor',seriesId}});
+    assert.equal(fakeWorker.statusCode,401,fakeWorker.body);
     const started=await app.inject({method:'POST',url:'/api/simulations',headers:auth,
       payload:{seriesId,mode:'history',pattern:'sine',count:3,intervalMs:200}});
     assert.equal(started.statusCode,202,started.body);
@@ -151,6 +162,28 @@ test('Symulacja przez REST tworzy dedykowany sensor, przesyła i zachowuje wynik
     const afterStopId=afterStop.json().id;
     const finished=await app.inject({method:'POST',url:`/api/simulations/${afterStopId}/stop`,headers:auth});
     assert.equal(finished.statusCode,200,finished.body);
+
+    // Po wylogowaniu operatora worker nadal może wyrejestrować swój sensor.
+    const postLogoutStart=await app.inject({method:'POST',url:'/api/simulations',headers:auth,
+      payload:{seriesId,mode:'live',pattern:'sine',count:100,intervalMs:250}});
+    assert.equal(postLogoutStart.statusCode,202,postLogoutStart.body);
+    const logout=await app.inject({method:'POST',url:'/api/auth/logout',headers:auth});
+    assert.equal(logout.statusCode,204);
+    const relogin=await app.inject({method:'POST',url:'/api/auth/login',
+      payload:{username:name,password:'the-simulator-test-password'}});
+    assert.equal(relogin.statusCode,200);
+    const freshAuth={authorization:`Bearer ${relogin.json().accessToken}`};
+    const logoutStop=await app.inject({method:'POST',
+      url:`/api/simulations/${postLogoutStart.json().id}/stop`,headers:freshAuth});
+    assert.equal(logoutStop.statusCode,200,logoutStop.body);
+    assert.equal(logoutStop.json().state,'stopped');
+    const retired=await app.inject({method:'GET',url:'/api/sensors',headers:freshAuth});
+    assert.ok(!retired.json().some((sensor:{id:string})=>sensor.id===postLogoutStart.json().sensorId));
+
+    assert.ok(restCalls.register>=12,'Symulacje muszą rejestrować sensor przez HTTP REST');
+    assert.equal(restCalls.revoke,restCalls.register,
+      'Każdy sensor symulacji musi zostać wyrejestrowany przez HTTP REST');
+
 
   } finally {
     releaseObservations();
