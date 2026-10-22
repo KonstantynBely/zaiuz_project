@@ -31,6 +31,15 @@ test('Symulacja przez REST tworzy dedykowany sensor, przesyła i zachowuje wynik
     return observedSamples;
   }});
   const restCalls={register:0,revoke:0};
+  let rejectAllMeasurements=false;
+  app.addHook('onRequest',async (request,reply)=>{
+    if (rejectAllMeasurements && request.method==='POST' && request.url==='/api/measurements') {
+      return reply.code(422).type('application/problem+json').send({
+        type:'about:blank',title:'Niepoprawna wartość',status:422,
+        detail:'Testowe odrzucenie po zmianie zakresu serii',
+      });
+    }
+  });
   app.addHook('onRequest',async request=>{
     const key=request.headers['x-roversense-worker-key'];
     if (typeof key !== 'string' || !/^[0-9a-f]{64}$/.test(key)) return;
@@ -141,6 +150,28 @@ test('Symulacja przez REST tworzy dedykowany sensor, przesyła i zachowuje wynik
     assert.match(incompatible.json().detail,/METAR.*zakres/u);
     assert.equal(restCalls.register,registeredBefore,'Nie wolno rejestrować czujnika dla niepoprawnej temperatury');
     assert.equal((await app.inject({method:'GET',url:'/api/simulations',headers:auth})).json().length,runsBefore);
+
+    // Gdy zakres serii zmienił się po starcie i API odrzuca wszystkie POST,
+    // zadanie nie może zostać oznaczone jako ukończone.
+    rejectAllMeasurements=true;
+    try {
+      const rejectedRun=await app.inject({method:'POST',url:'/api/simulations',headers:auth,
+        payload:{seriesId,mode:'history',pattern:'sine',count:3,intervalMs:200}});
+      assert.equal(rejectedRun.statusCode,202,rejectedRun.body);
+      let failed:Record<string,any>|null=null;
+      for(let i=0;i<40;i++) {
+        const response=await app.inject({method:'GET',url:`/api/simulations/${rejectedRun.json().id}`,headers:auth});
+        const state=response.json();
+        if(state.state==='failed'||state.state==='completed'){failed=state;break;}
+        await new Promise(resolve=>setTimeout(resolve,50));
+      }
+      assert.equal(failed?.state,'failed',JSON.stringify(failed));
+      assert.equal(failed?.acceptedCount,0);
+      assert.equal(failed?.rejectedCount,3);
+      assert.match(String(failed?.error),/odrzucone przez API/);
+    } finally {
+      rejectAllMeasurements=false;
+    }
 
     // Nieudana inicjalizacja nie może pozostawić zarezerwowanego miejsca.
     const unavailable=await app.inject({method:'POST',url:'/api/simulations',headers:auth,
