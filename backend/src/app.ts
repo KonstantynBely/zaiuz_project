@@ -63,8 +63,12 @@ export function buildApp(options:{pool?:Pool;loadObserved?:(station:MetarStation
     const workerKeyBytes=Buffer.from(workerKey);
     const sensorWriteGuard:preHandlerHookHandler=async request=>{
       const supplied=request.headers['x-roversense-worker-key'];
+      const address=app.server.address();
       const local=['127.0.0.1','::1','::ffff:127.0.0.1'].includes(request.ip);
-      if (local && typeof supplied==='string') {
+      // Żądanie przez publiczny Caddy ma inną nazwę Host, choć proxy też działa na localhost.
+      const direct=address && typeof address!=='string' &&
+        request.headers.host===`127.0.0.1:${address.port}`;
+      if (local && direct && typeof supplied==='string') {
         const candidate=Buffer.from(supplied);
         if (candidate.length===workerKeyBytes.length && timingSafeEqual(candidate,workerKeyBytes)) return;
       }
