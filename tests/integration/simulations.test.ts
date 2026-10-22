@@ -158,7 +158,7 @@ test('Symulacja przez REST tworzy dedykowany sensor, przesyła i zachowuje wynik
       const rejectedRun=await app.inject({method:'POST',url:'/api/simulations',headers:auth,
         payload:{seriesId,mode:'history',pattern:'sine',count:3,intervalMs:200}});
       assert.equal(rejectedRun.statusCode,202,rejectedRun.body);
-      let failed:Record<string,any>|null=null;
+      let failed:Record<string,unknown>|null=null;
       for(let i=0;i<40;i++) {
         const response=await app.inject({method:'GET',url:`/api/simulations/${rejectedRun.json().id}`,headers:auth});
         const state=response.json();
