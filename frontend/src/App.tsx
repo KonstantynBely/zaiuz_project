@@ -329,9 +329,7 @@ function App() {
     [timeFiltered, visibleSeries],
   );
   const lastMeasurement = measurements[0];
-  const sourceCounts = useMemo(() => new Map(series.map(item => [
-    String(item.id), measurements.filter(m => String(m.seriesId) === String(item.id)).length,
-  ])), [series, measurements]);
+
   const activeSelected = filtered.some(item => String(item.id) === selectedId) ? selectedId : null;
   const chartSeries = chartMode === 'raw' ?
     visibleSeries.filter(item => String(item.id) === (visibleSeries.some(s => String(s.id) === rawSeriesId) ? rawSeriesId : String(visibleSeries[0]?.id))) : visibleSeries;
@@ -477,7 +475,7 @@ function App() {
               <div className="signal-list">
                 {series.length === 0 ? <p className="signal-empty">{status === 'loading' ? 'Wczytywanie serii…' : 'Brak serii do wyświetlenia.'}</p> : series.map(item => {
                   const last = measurements.find(point => String(point.seriesId) === String(item.id));
-                  return <div key={String(item.id)} className="signal-item"><span className="signal-orb"><Icon name="activity" size={17}/></span><div className="signal-item-main"><strong>{item.name}</strong><span>{sourceCounts.get(String(item.id)) ?? 0} wczytanych pomiarów</span></div><span className="signal-item-value" style={{ color: item.color }}>{last ? formatValue(last.value) : '—'} <small>{item.unit || ''}</small></span></div>;
+                  return <div key={String(item.id)} className="signal-item"><div className="signal-item-main"><strong>{item.name}</strong></div><span className="signal-item-value" style={{ color: item.color }}>{last ? formatValue(last.value) : '—'} <small>{item.unit || ''}</small></span></div>;
                 })}
               </div>
               
