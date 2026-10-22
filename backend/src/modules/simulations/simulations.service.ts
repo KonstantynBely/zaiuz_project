@@ -5,6 +5,7 @@ import type { SeriesService } from '../series/series.service.js';
 import type { SensorsService } from '../sensors/sensors.service.js';
 import type { SimulationsRepository, SimulationRow } from './simulations.repository.js';
 import type { SimulationInput, SimulationParameters, SimulationState } from './simulations.schema.js';
+import { loadMetarTemperatures, type MetarStation, type ObservedPoint } from './metar.source.js';
 
 interface Job { controller:AbortController; finished:Promise<void> }
 export const MAX_CONCURRENT_SIMULATIONS = 4;
@@ -40,11 +41,12 @@ function pause(ms:number,signal:AbortSignal):Promise<void> {
 /** Jednoproceseowy wykonawca trzyma klucz tylko w pamięci do końca zadania. */
 export function createSimulationsService(
   app:FastifyInstance, repo:SimulationsRepository, series:SeriesService,sensors:SensorsService,
+  loadObserved: (station: MetarStation) => Promise<ObservedPoint[]> = loadMetarTemperatures,
 ) {
   const jobs=new Map<string,Job>();
   let starting=false;
 
-  async function execute(id:string,sensorId:string,key:string,params:SimulationParameters,signal:AbortSignal) {
+  async function execute(id:string,sensorId:string,key:string,params:SimulationParameters,signal:AbortSignal, observations:ObservedPoint[] | null) {
     let finalState:SimulationState='completed';
     let errorMessage:string|undefined;
     try {
@@ -55,9 +57,10 @@ export function createSimulationsService(
       const baseline=Date.now();
       for(let i=0;i<params.count;i++) {
         if(signal.aborted){finalState='stopped';break;}
-        const value=makeValue(params,i);
+        const value=observations ? observations[i]!.value : makeValue(params,i);
         const timestamp=params.mode==='history' ?
-          new Date(baseline-(params.count-i)*params.intervalMs).toISOString() : undefined;
+          observations ? observations[i]!.timestamp :
+            new Date(baseline-(params.count-i)*params.intervalMs).toISOString() : undefined;
         const res=await fetch(url,{
           method:'POST',headers:{'Content-Type':'application/json','X-API-Key':key},
           body:JSON.stringify({value,...(timestamp?{timestamp}:{})}),signal,
@@ -90,18 +93,30 @@ export function createSimulationsService(
       try {
         const seriesId=parseId(String(input.seriesId));
         const target=await series.get(seriesId);
+        const observed = input.pattern === 'observed';
+        if (observed && !input.station) throw new ApiError(422, 'Wybierz stację pomiarową.');
+        if (!observed && input.station) throw new ApiError(422, 'Stacja jest dostępna tylko dla obserwacji METAR.');
+        if (observed && !['°C', 'C'].includes(target.unit ?? '')) {
+          throw new ApiError(422, 'Obserwacje temperatury wymagają serii w °C.');
+        }
+        // Pobranie danych odbywa się na starcie, przed rejestracją sensora.
+        const observations = observed ? await loadObserved(input.station!) : null;
+        if (observations && observations.length === 0) throw new ApiError(422, 'Brak dostępnych obserwacji.');
         const params:SimulationParameters={
           mode:input.mode,pattern:input.pattern,
-          count:input.count??60,intervalMs:input.intervalMs??1000,
-          min:input.min??target.minValue,max:input.max??target.maxValue,
+          count:observations ? observations.length : input.count??60,
+          intervalMs:input.intervalMs??1000,
+          min:observed ? target.minValue : input.min??target.minValue,
+          max:observed ? target.maxValue : input.max??target.maxValue,
+          ...(observed ? {station:input.station!,source:'AWC METAR' as const} : {}),
         };
-        rangeCheck(params,target);
+        if (!observed) rangeCheck(params,target);
         const sensor=await sensors.register({name:input.name??`Symulator ${new Date().toISOString()}`,seriesId});
         let row:SimulationRow;
         try {row=await repo.create(seriesId,sensor.id,params);}
         catch(error){await sensors.revoke(sensor.id);throw error;}
         const controller=new AbortController();
-        const finished=execute(row.id,sensor.id,sensor.apiKey,params,controller.signal);
+        const finished=execute(row.id,sensor.id,sensor.apiKey,params,controller.signal,observations);
         jobs.set(row.id,{controller,finished});
         return expose(row);
       } finally {starting=false;}
