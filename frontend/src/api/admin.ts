@@ -36,7 +36,8 @@ export interface Simulation {
   seriesId: string;
   sensorId: string | null;
   state: SimulationState;
-  parameters: Omit<SimulationInput, 'seriesId' | 'name'>;
+  parameters: Required<Pick<SimulationInput, 'mode' | 'pattern' | 'intervalMs' | 'count' | 'min' | 'max'>> &
+    Pick<SimulationInput, 'station' | 'source'>;
   acceptedCount: number;
   rejectedCount: number;
   startedAt: string | null;
