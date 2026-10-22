@@ -1,3 +1,4 @@
+import type { MetarStation, ObservedPoint } from './modules/simulations/metar.source.js';
 import Fastify from 'fastify';
 import type { FastifyInstance, preHandlerHookHandler } from 'fastify';
 import type { Pool } from 'pg';
@@ -23,7 +24,7 @@ import { createEventsService } from './modules/events/events.service.js';
 import { eventsRoutes } from './modules/events/events.routes.js';
 
 /** Composition root: zależności można wstrzykiwać w testach bez tworzenia globalnego Pool. */
-export function buildApp(options:{pool?:Pool}={}):FastifyInstance {
+export function buildApp(options:{pool?:Pool;loadObserved?:(station:MetarStation)=>Promise<ObservedPoint[]>}={}):FastifyInstance {
   const app=Fastify({forceCloseConnections:'idle',logger:{redact:[
     'req.headers.authorization','req.headers.x-api-key','request.headers.authorization',
     'request.headers.x-api-key','res.headers.set-cookie',
@@ -60,7 +61,7 @@ export function buildApp(options:{pool?:Pool}={}):FastifyInstance {
     app.register(async instance=>seriesRoutes(instance,seriesService,adminGuard));
     app.register(async instance=>sensorsRoutes(instance,sensorService,adminGuard));
     app.register(async instance=>measurementsRoutes(instance,measureService));
-    const simulations=createSimulationsService(app,createSimulationsRepository(pool),seriesService,sensorService);
+    const simulations=createSimulationsService(app,createSimulationsRepository(pool),seriesService,sensorService,options.loadObserved);
     app.register(async instance=>simulationsRoutes(instance,simulations,adminGuard));
     app.addHook('preClose',async()=>{await simulations.close();});
   }
