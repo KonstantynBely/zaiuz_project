@@ -7,6 +7,7 @@ import type { SimulationsRepository, SimulationRow } from './simulations.reposit
 import type { SimulationInput, SimulationParameters, SimulationState } from './simulations.schema.js';
 
 interface Job { controller:AbortController; finished:Promise<void> }
+export const MAX_CONCURRENT_SIMULATIONS = 4;
 
 function expose(row:SimulationRow) {
   return {
@@ -84,7 +85,7 @@ export function createSimulationsService(
       return expose(row);
     },
     async start(input:SimulationInput) {
-      if(starting||jobs.size>0)throw new ApiError(409,'Można uruchomić jedną symulację naraz');
+      if(starting||jobs.size>=MAX_CONCURRENT_SIMULATIONS)throw new ApiError(409,'Osiągnięto limit czterech aktywnych symulacji.');
       starting=true;
       try {
         const seriesId=parseId(String(input.seriesId));
