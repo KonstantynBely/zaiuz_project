@@ -1,8 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { ApiError } from '../../common/errors.js';
 import { parseId } from '../../common/validation.js';
-import type { SeriesService } from '../series/series.service.js';
-import type { SensorsService } from '../sensors/sensors.service.js';
+import type { SimulationHttpClient } from './simulations.http.js';
 import type { SimulationsRepository, SimulationRow } from './simulations.repository.js';
 import type { SimulationInput, SimulationParameters, SimulationState } from './simulations.schema.js';
 import { loadMetarTemperatures, type MetarStation, type ObservedPoint } from './metar.source.js';
@@ -40,7 +39,7 @@ function pause(ms:number,signal:AbortSignal):Promise<void> {
 
 /** Jednoproceseowy wykonawca trzyma klucz tylko w pamięci do końca zadania. */
 export function createSimulationsService(
-  app:FastifyInstance, repo:SimulationsRepository, series:SeriesService,sensors:SensorsService,
+  app:FastifyInstance, repo:SimulationsRepository, sensorApi:SimulationHttpClient,
   loadObserved: (station: MetarStation) => Promise<ObservedPoint[]> = loadMetarTemperatures,
 ) {
   const jobs=new Map<string,Job>();
@@ -77,7 +76,13 @@ export function createSimulationsService(
       finalState=signal.aborted?'stopped':'failed';
       errorMessage=error instanceof Error?error.message:'Nieznany błąd symulacji';
     } finally {
-      try {await sensors.revoke(sensorId);} catch { /* Sensor może zostać usunięty razem z serią. */ }
+      try {
+        await sensorApi.revokeSensor(sensorId);
+      } catch (error) {
+        app.log.error({ err:error, sensorId }, 'Nie udało się wyrejestrować sensora przez REST');
+        finalState='failed';
+        errorMessage='Nie udało się wyrejestrować czujnika przez REST API.';
+      }
       try {await repo.changeState(id,finalState,errorMessage);} catch { /* Seria mogła zostać usunięta. */ }
       jobs.delete(id);
     }
@@ -96,7 +101,7 @@ export function createSimulationsService(
       pendingStarts++;
       try {
         const seriesId=parseId(String(input.seriesId));
-        const target=await series.get(seriesId);
+        const target=await sensorApi.getSeries(seriesId);
         const observed = input.pattern === 'observed';
         if (observed && !input.station) throw new ApiError(422, 'Wybierz stację pomiarową.');
         if (!observed && input.station) throw new ApiError(422, 'Stacja jest dostępna tylko dla obserwacji METAR.');
@@ -115,10 +120,16 @@ export function createSimulationsService(
           ...(observed ? {station:input.station!,source:'AWC METAR' as const} : {}),
         };
         if (!observed) rangeCheck(params,target);
-        const sensor=await sensors.register({name:input.name??`Symulator ${new Date().toISOString()}`,seriesId});
+        const sensor=await sensorApi.registerSensor(input.name??`Symulator ${new Date().toISOString()}`,seriesId);
         let row:SimulationRow;
         try {row=await repo.create(seriesId,sensor.id,params);}
-        catch(error){await sensors.revoke(sensor.id);throw error;}
+        catch(error) {
+          try {await sensorApi.revokeSensor(sensor.id);}
+          catch (revokeError) {
+            app.log.error({ err:revokeError, sensorId:sensor.id }, 'Nie udało się wyrejestrować sensora po błędzie tworzenia symulacji');
+          }
+          throw error;
+        }
         const controller=new AbortController();
         const finished=execute(row.id,sensor.id,sensor.apiKey,params,controller.signal,observations);
         jobs.set(row.id,{controller,finished});
