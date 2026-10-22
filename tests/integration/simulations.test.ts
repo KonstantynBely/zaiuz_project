@@ -19,6 +19,10 @@ test('Symulacja przez REST tworzy dedykowany sensor, przesyła i zachowuje wynik
   const observationsGate=new Promise<void>(resolve=>{releaseObservations=resolve;});
   const app=buildApp({pool,loadObserved:async station=>{
     if(station==='EPKK')throw new ApiError(503,'Test: zewnętrzne źródło niedostępne');
+    if(station==='EPGD') return [
+      { value: -80, timestamp: observedSamples[0]!.timestamp },
+      ...observedSamples,
+    ];
     assert.equal(station,'EPWA');
     if(holdObserved) {
       waitingForObservations++;
@@ -126,6 +130,17 @@ test('Symulacja przez REST tworzy dedykowany sensor, przesyła i zachowuje wynik
     assert.equal(metar.length,3);
     assert.deepEqual(metar.map((value:{value:number})=>value.value),[4,5,6]);
     assert.deepEqual(metar.map((value:{timestamp:string})=>value.timestamp),observedSamples.map(p=>p.timestamp));
+
+    // METAR poza zakresem powinien zostać odrzucony PRZED utworzeniem sensora
+    // i rekordu symulacji, a nie ukończyć zadanie z samymi odrzutami.
+    const registeredBefore=restCalls.register;
+    const runsBefore=(await app.inject({method:'GET',url:'/api/simulations',headers:auth})).json().length;
+    const incompatible=await app.inject({method:'POST',url:'/api/simulations',headers:auth,
+      payload:{seriesId,mode:'history',pattern:'observed',station:'EPGD',intervalMs:200}});
+    assert.equal(incompatible.statusCode,422,incompatible.body);
+    assert.match(incompatible.json().detail,/METAR.*zakres/u);
+    assert.equal(restCalls.register,registeredBefore,'Nie wolno rejestrować czujnika dla niepoprawnej temperatury');
+    assert.equal((await app.inject({method:'GET',url:'/api/simulations',headers:auth})).json().length,runsBefore);
 
     // Nieudana inicjalizacja nie może pozostawić zarezerwowanego miejsca.
     const unavailable=await app.inject({method:'POST',url:'/api/simulations',headers:auth,
