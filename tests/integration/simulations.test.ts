@@ -28,7 +28,8 @@ test('Symulacja przez REST tworzy dedykowany sensor, przesyła i zachowuje wynik
   }});
   const restCalls={register:0,revoke:0};
   app.addHook('onRequest',async request=>{
-    if (typeof request.headers['x-roversense-worker-key'] !== 'string') return;
+    const key=request.headers['x-roversense-worker-key'];
+    if (typeof key !== 'string' || !/^[0-9a-f]{64}$/.test(key)) return;
     if (request.method==='POST' && request.url==='/api/sensors') restCalls.register++;
     if (request.method==='DELETE' && /^\/api\/sensors\/[1-9]\d*$/.test(request.url)) restCalls.revoke++;
   });
