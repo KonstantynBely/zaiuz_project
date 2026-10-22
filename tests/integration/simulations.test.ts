@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { hashPassword } from '../../backend/src/modules/auth/auth.service.js';
 import { createPool } from '../../backend/src/database/pool.js';
 import { buildApp } from '../../backend/src/app.js';
+import { ApiError } from '../../backend/src/common/errors.js';
 
 test('Symulacja przez REST tworzy dedykowany sensor, przesyła i zachowuje wyniki',async()=>{
   const pool=createPool();
@@ -12,8 +13,17 @@ test('Symulacja przez REST tworzy dedykowany sensor, przesyła i zachowuje wynik
     { value: 5, timestamp: new Date(observedTime - 60_000).toISOString() },
     { value: 6, timestamp: new Date(observedTime).toISOString() },
   ];
+  let holdObserved=false;
+  let waitingForObservations=0;
+  let releaseObservations:()=>void=()=>{};
+  const observationsGate=new Promise<void>(resolve=>{releaseObservations=resolve;});
   const app=buildApp({pool,loadObserved:async station=>{
+    if(station==='EPKK')throw new ApiError(503,'Test: zewnętrzne źródło niedostępne');
     assert.equal(station,'EPWA');
+    if(holdObserved) {
+      waitingForObservations++;
+      await observationsGate;
+    }
     return observedSamples;
   }});
   const name=`simulation_test_${Date.now()}_${Math.floor(Math.random()*1e9)}`;
@@ -105,7 +115,45 @@ test('Symulacja przez REST tworzy dedykowany sensor, przesyła i zachowuje wynik
     assert.deepEqual(metar.map((value:{value:number})=>value.value),[4,5,6]);
     assert.deepEqual(metar.map((value:{timestamp:string})=>value.timestamp),observedSamples.map(p=>p.timestamp));
 
+    // Nieudana inicjalizacja nie może pozostawić zarezerwowanego miejsca.
+    const unavailable=await app.inject({method:'POST',url:'/api/simulations',headers:auth,
+      payload:{seriesId,mode:'live',pattern:'observed',station:'EPKK',intervalMs:60000}});
+    assert.equal(unavailable.statusCode,503,unavailable.body);
+
+    // Przytrzymanie czterech żądań na etapie pobierania źródła weryfikuje
+    // rzeczywistą współbieżność inicjalizacji, a nie tylko już uruchomione zadania.
+    holdObserved=true;
+    const parallelRequests=Array.from({length:4},()=>app.inject({
+      method:'POST',url:'/api/simulations',headers:auth,
+      payload:{seriesId,mode:'live',pattern:'observed',station:'EPWA',intervalMs:60000},
+    }));
+    for(let i=0;i<100 && waitingForObservations<4;i++) {
+      await new Promise(resolve=>setTimeout(resolve,20));
+    }
+    assert.equal(waitingForObservations,4,'Cztery inicjalizacje powinny równocześnie oczekiwać na dane');
+    const fifthConcurrent=await app.inject({method:'POST',url:'/api/simulations',headers:auth,
+      payload:{seriesId,mode:'live',pattern:'observed',station:'EPWA',intervalMs:60000}});
+    assert.equal(fifthConcurrent.statusCode,409,fifthConcurrent.body);
+    releaseObservations();
+    const startedTogether=await Promise.all(parallelRequests);
+    assert.deepEqual(startedTogether.map(response=>response.statusCode),[202,202,202,202],
+      startedTogether.map(response=>response.body).join('\\n'));
+    for(const response of startedTogether) {
+      const stopped=await app.inject({method:'POST',
+        url:`/api/simulations/${response.json().id}/stop`,headers:auth});
+      assert.equal(stopped.statusCode,200,stopped.body);
+      assert.equal(stopped.json().state,'stopped');
+    }
+    // Po zwolnieniu miejsc kolejna inicjalizacja musi znów być możliwa.
+    const afterStop=await app.inject({method:'POST',url:'/api/simulations',headers:auth,
+      payload:{seriesId,mode:'live',pattern:'observed',station:'EPWA',intervalMs:60000}});
+    assert.equal(afterStop.statusCode,202,afterStop.body);
+    const afterStopId=afterStop.json().id;
+    const finished=await app.inject({method:'POST',url:`/api/simulations/${afterStopId}/stop`,headers:auth});
+    assert.equal(finished.statusCode,200,finished.body);
+
   } finally {
+    releaseObservations();
     await app.close();
     if(seriesId)await pool.query('DELETE FROM series WHERE id=$1',[seriesId]);
     if(adminId)await pool.query('DELETE FROM admins WHERE id=$1',[adminId]);
