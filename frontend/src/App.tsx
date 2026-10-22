@@ -168,7 +168,6 @@ function App() {
   const [draftTo, setDraftTo] = useState('');
   const [customDates, setCustomDates] = useState<{ from?: string; to?: string }>({});
   const [dateError, setDateError] = useState('');
-  const [streamStatus, setStreamStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting');
   const [tablePage, setTablePage] = useState(0);
   const [chartMode, setChartMode] = useState<'percent' | 'raw'>('percent');
   const [rawSeriesId, setRawSeriesId] = useState('');
@@ -204,7 +203,6 @@ function App() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [compact, menuOpen]);
-  const [clock, setClock] = useState(new Date());
   const [screen, setScreen] = useState<'dashboard' | AdminView | 'simulations'>('dashboard');
   // Sesja istnieje wyłącznie w pamięci bieżącej karty.
   const [session, setSession] = useState<{ token: string; expiresAt: number } | null>(null);
@@ -250,11 +248,6 @@ function App() {
   }, [screen]);
 
   useEffect(() => {
-    const id = window.setInterval(() => setClock(new Date()), 60_000);
-    return () => window.clearInterval(id);
-  }, []);
-
-  useEffect(() => {
     if (preview) { setStatus('ready'); setError(''); return; }
     const controller = new AbortController();
     const from = range === 'custom' ? customDates.from : range === 'all' ? undefined :
@@ -296,16 +289,13 @@ function App() {
   // SSE jest strumieniem powiadomień; po ponownym połączeniu pobieramy brakujące dane przez REST.
   useEffect(() => {
     if (preview || typeof EventSource === 'undefined') {
-      setStreamStatus('disconnected');
       return;
     }
     const source = new EventSource('/api/events');
     let openCount = 0;
     source.onopen = () => {
-      setStreamStatus('connected');
       if (openCount++ > 0) setReload(value => value + 1);
     };
-    source.onerror = () => setStreamStatus('disconnected');
     source.addEventListener('measurement', (event: MessageEvent<string>) => {
       try {
         const item = JSON.parse(event.data) as Measurement;
@@ -395,12 +385,11 @@ function App() {
       <aside ref={sidebarElement} id="mission-navigation" className={'sidebar ' + (menuOpen ? 'is-open' : '')} aria-label="Menu aplikacji" aria-hidden={compact && !menuOpen} inert={compact && !menuOpen}>
         <a className="brand" href="#dashboard" onClick={openDashboard}>
           <span className="brand-symbol"><Icon name="planet" size={25}/></span>
-          <span className="brand-copy"><strong>RoverSense</strong><span>MISSION CONTROL</span></span>
+          <span className="brand-copy"><strong>RoverSense</strong></span>
         </a>
-        <p className="nav-caption">MONITOROWANIE</p>
         <nav className="side-nav" aria-label="Nawigacja główna">
-          <a className={"nav-link " + (screen === "dashboard" ? "active" : "")} href="#dashboard" aria-current={screen === 'dashboard' ? 'page' : undefined} onClick={openDashboard}><Icon name="dashboard"/>Pulpit misji</a>
-          <a className="nav-link" href="#telemetry" onClick={openDashboard}><Icon name="chart"/>Wykres telemetrii</a>
+          <a className={"nav-link " + (screen === "dashboard" ? "active" : "")} href="#dashboard" aria-current={screen === 'dashboard' ? 'page' : undefined} onClick={openDashboard}><Icon name="dashboard"/>Pulpit</a>
+          <a className="nav-link" href="#telemetry" onClick={openDashboard}><Icon name="chart"/>Wykres pomiarów</a>
           <a className="nav-link" href="#records" onClick={openDashboard}><Icon name="clock"/>Dziennik pomiarów</a>
         </nav>
         {session && (
@@ -413,20 +402,18 @@ function App() {
           </div>
         )}
         <div className="sidebar-bottom">
-          <span className="mini-label">STACJA KONTROLI</span>
-          <strong>RoverSense / Ziemia</strong>
-          <span>System monitorowania danych telemetrycznych.</span>
-          <div className="signal"><span className={'beacon ' + (!isReady ? 'error' : '')}/><span>{preview ? 'Podgląd lokalny' : isOnline ? 'Połączono z API' : 'Oczekiwanie na API'}</span></div>
           {!session && <button className="sidebar-login-button" type="button" onClick={() => openAdmin('account')}><Icon name="lock" size={15}/> Zaloguj się</button>}
         </div>
       </aside>
       <div className="workspace" inert={compact && menuOpen} aria-hidden={compact && menuOpen}>
         <header className="topbar">
           <button ref={menuButton} className="mobile-menu" type="button" aria-label={menuOpen ? 'Zamknij menu' : 'Otwórz menu'} aria-controls="mission-navigation" aria-expanded={menuOpen} onClick={() => setMenuOpen(value => !value)}><Icon name="menu"/></button>
-          <div className="breadcrumb"><span>RoverSense</span><span className="slash">/</span><b>{screen === "dashboard" ? "Pulpit misji" : screen === "series" ? "Serie pomiarowe" : screen === "sensors" ? "Czujniki" : screen === "simulations" ? "Symulatory" : "Konto"}</b></div>
+          <div className="breadcrumb"><b>{screen === "dashboard" ? "Pulpit" : screen === "series" ? "Serie pomiarowe" : screen === "sensors" ? "Czujniki" : screen === "simulations" ? "Symulatory" : "Konto"}</b></div>
           <div className="topbar-right">
-            <span className="utc-time">UTC {new Intl.DateTimeFormat('pl-PL', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }).format(clock)}</span>
-            <span className={'status-pill ' + (!isReady ? 'offline' : '')}><span className={'beacon ' + (!isReady ? 'error' : '')}/>{preview ? 'PODGLĄD' : isOnline ? 'API ONLINE' : status === 'loading' ? 'ŁĄCZENIE' : 'API OFFLINE'}</span>
+            <span className={'connection-indicator ' + (!isReady ? 'offline' : '')} role="status" aria-label={preview ? 'Dane demonstracyjne' : isOnline ? 'Połączono z serwerem' : status === 'loading' ? 'Łączenie z serwerem' : 'Brak połączenia z serwerem'}>
+              <span className={'beacon ' + (!isReady ? 'error' : '')} aria-hidden="true"/>
+              <span>{preview ? 'Podgląd' : isOnline ? 'Połączono' : status === 'loading' ? 'Łączenie…' : 'Brak połączenia'}</span>
+            </span>
           </div>
         </header>
         <main className="main-content" id="dashboard" tabIndex={-1}>
@@ -436,36 +423,31 @@ function App() {
             <AdminPanel view={screen === 'simulations' ? 'account' : screen} token={session?.token ?? null} onLogin={onLogin} onLogout={onLogout} onUnauthorized={onUnauthorized} onSeriesChanged={onSeriesChanged}/>
           ) : (<>
           <div className="page-intro">
-            <div><p className="eyebrow">SYSTEM TELEMETRYCZNY / PRZEGLĄD</p><h1>Centrum kontroli misji</h1><p>Stan systemu i odczyty z zarejestrowanych czujników.</p></div>
-            <div className="intro-meta"><Icon name="signal" size={15}/><span>DANE UTC</span><span className="outline-tag">MISSION / RS-01</span></div>
+            <h1>Pulpit</h1>
           </div>
           {preview && <div className="notice" role="status"><strong>Tryb podglądu UI.</strong> Wyświetlane wartości są wygenerowane lokalnie i nie zostały zapisane w bazie. <button type="button" onClick={returnToApi}>Wróć do danych API</button></div>}
           {status === 'error' && !preview && <div className="notice error" role="alert">Nie udało się połączyć z API: {error}. Uruchom lokalny backend lub sprawdź połączenie. {import.meta.env.DEV && <button type="button" onClick={enablePreview}>Włącz podgląd interfejsu</button>}</div>}
-          <section className="hero" aria-label="Przegląd misji RoverSense">
-            <div className="hero-visual"><img className="rover-scene" src={roverHero} alt="Ilustracja łazika z sześcioma kołami, masztem kamer i ramieniem robotycznym na Marsie"/></div>
+          <section className="hero" aria-label="RoverSense — monitorowanie pomiarów">
+            <div className="hero-visual"><img className="rover-scene" src={roverHero} alt="Ilustracja łazika marsjańskiego"/></div>
             <div className="hero-copy">
-              <span className="hero-kicker">MARS SURFACE OPERATIONS</span>
-              <h2>Odkrywaj dane.<br/>Monitoruj każdy sygnał.</h2>
-              <p>Jedno centrum obserwacji pomiarów i strumieni danych z czujników — od zapisanej historii po bieżącą telemetrię.</p>
-              <div className="hero-actions"><button type="button" className="primary-button" onClick={() => scrollToSection('telemetry')}>Zobacz telemetrię <Icon name="arrow" size={15}/></button><span className="hero-meta">{preview ? 'SYMULOWANE DANE DEMO' : 'ŹRÓDŁO: ROVERSENSE API'}</span></div>
+              <h2>Dane z czujników</h2>
+              <p>Wykresy i historia pomiarów w jednym miejscu.</p>
             </div>
-            <span className="hero-corner">ROVER / SURFACE UNIT</span>
           </section>
-          <section className="metric-grid" aria-label="Podsumowanie telemetrii">
-            <div className="metric-card"><span className="metric-icon"><Icon name="layers"/></span><div className="metric-body"><span className="metric-label">Zarejestrowane serie</span><strong className="metric-value">{isReady ? series.length : '—'}</strong><span className="metric-foot">Konfiguracja pomiarów</span></div></div>
-            <div className="metric-card"><span className="metric-icon teal"><Icon name="activity"/></span><div className="metric-body"><span className="metric-label">Wczytane pomiary</span><strong className="metric-value">{isReady ? measurements.length : '—'}</strong><span className="metric-foot">Maksymalnie 1000 z API</span></div></div>
-            <div className="metric-card"><span className="metric-icon"><Icon name="clock"/></span><div className="metric-body"><span className="metric-label">Ostatni odczyt</span><strong className="metric-value" style={{ fontSize: 19 }}>{lastMeasurement && isReady ? formatShortTime(lastMeasurement.timestamp) : '—'}</strong><span className="metric-foot">{lastMeasurement && isReady ? formatDate(lastMeasurement.timestamp).split(',')[0] + ' UTC' : 'Brak odczytów'}</span></div></div>
-            <div className="metric-card"><span className="metric-icon teal"><Icon name="signal"/></span><div className="metric-body"><span className="metric-label">Status transmisji</span><strong className="metric-value" style={{ fontSize: 19 }}>{preview ? 'DEMO' : !isOnline ? 'OFFLINE' : streamStatus === 'connected' ? 'SSE LIVE' : 'REST API'}</strong><span className="metric-foot">{preview ? 'Lokalne dane testowe' : !isOnline ? 'Sprawdź API' : streamStatus === 'connected' ? 'Automatyczny odbiór zdarzeń' : 'Trwa ponowne łączenie SSE'}</span></div></div>
+          <section className="metric-grid" aria-label="Podsumowanie pomiarów">
+            <div className="metric-card"><span className="metric-icon"><Icon name="layers"/></span><div className="metric-body"><span className="metric-label">Serie pomiarowe</span><strong className="metric-value">{isReady ? series.length : '—'}</strong></div></div>
+            <div className="metric-card"><span className="metric-icon teal"><Icon name="activity"/></span><div className="metric-body"><span className="metric-label" title="Liczba wczytanych pomiarów, maksymalnie 1000 w jednym zapytaniu">Wczytane pomiary</span><strong className="metric-value">{isReady ? measurements.length : '—'}</strong></div></div>
+            <div className="metric-card"><span className="metric-icon"><Icon name="clock"/></span><div className="metric-body"><span className="metric-label">Ostatni odczyt</span><strong className="metric-value metric-time">{lastMeasurement && isReady ? formatShortTime(lastMeasurement.timestamp) : '—'}</strong></div></div>
           </section>
           <div className="content-grid">
             <section id="telemetry" className="panel" aria-labelledby="chart-heading">
               <div className="panel-heading">
-                <div><p className="eyebrow">ANALIZA / TRENDY</p><h2 id="chart-heading">Przebieg telemetrii</h2><p className="subtle">{chartMode === 'raw' ? 'Oś Y przedstawia jednostki wybranej serii.' : 'Wartości na osi Y przedstawiają % zakresu każdej serii.'}</p></div>
+                <div><h2 id="chart-heading">Wykres pomiarów</h2></div>
                 <div className="panel-controls">
                   <div className="range-tabs" role="group" aria-label="Zakres czasu">
                     {timeRanges.map(option => <button key={option.value} type="button" aria-pressed={range === option.value} onClick={() => { setRange(option.value); setDateError(''); setSelectedId(null); setTablePage(0); }}>{option.label}</button>)}
                   </div>
-                  <button className="icon-button" aria-label="Odśwież dane API" title="Odśwież dane" type="button" onClick={() => { if (!preview) { setStatus('loading'); setReload(value => value + 1); } }} disabled={preview || status === 'loading'}><Icon name="refresh" size={15}/></button>
+                  <button className="icon-button" aria-label="Odśwież pomiary" title="Odśwież pomiary" type="button" onClick={() => { if (!preview) { setStatus('loading'); setReload(value => value + 1); } }} disabled={preview || status === 'loading'}><Icon name="refresh" size={15}/></button>
                 </div>
               </div>
               <form className="date-range-form" onSubmit={applyDates} aria-label="Własny przedział dat">
@@ -488,21 +470,21 @@ function App() {
               {status === 'loading' && !preview ? <div className="loading-text" role="status">Pobieranie danych telemetrycznych…</div> :
                 !isReady || series.length === 0 ? <div className="empty-chart"><Icon name="database" size={28}/><strong>Nie ma jeszcze serii pomiarowych</strong><span>Dodaj serie i prześlij pomiary przez API. {import.meta.env.DEV && !preview ? <button type="button" className="section-action" onClick={enablePreview}>Zobacz przykładowy wygląd</button> : null}</span></div> :
                   <TelemetryChart series={chartSeries} allSeries={series} measurements={filtered} selectedId={activeSelected} raw={chartMode === 'raw'}/>}
-              <div className="chart-foot"><span>{chartMode === 'raw' ? 'Wykres w jednostkach wybranej serii' : 'Porównanie względem zakresów serii'} · <b>Oś czasu UTC</b></span><span>{preview ? 'Dane demonstracyjne' : streamStatus === 'connected' ? '● Aktualizacja SSE aktywna' : '● SSE: ponawianie połączenia'} · Wybierz wartość w tabeli, by zaznaczyć punkt.</span></div>
+              <div className="chart-foot"><span>{chartMode === 'raw' ? 'Wartości w jednostkach wybranej serii' : 'Wartości jako % zakresu serii'} · czas UTC</span></div>
             </section>
             <aside className="panel signal-panel" id="series" aria-labelledby="series-heading">
-              <div className="panel-heading"><div><p className="eyebrow">SYSTEM / SERIE</p><h2 id="series-heading">Aktywne serie</h2><p className="subtle">Ostatni zarejestrowany odczyt.</p></div></div>
+              <div className="panel-heading"><h2 id="series-heading">Ostatnie wartości serii</h2></div>
               <div className="signal-list">
                 {series.length === 0 ? <p className="signal-empty">{status === 'loading' ? 'Wczytywanie serii…' : 'Brak serii do wyświetlenia.'}</p> : series.map(item => {
                   const last = measurements.find(point => String(point.seriesId) === String(item.id));
                   return <div key={String(item.id)} className="signal-item"><span className="signal-orb"><Icon name="activity" size={17}/></span><div className="signal-item-main"><strong>{item.name}</strong><span>{sourceCounts.get(String(item.id)) ?? 0} wczytanych pomiarów</span></div><span className="signal-item-value" style={{ color: item.color }}>{last ? formatValue(last.value) : '—'} <small>{item.unit || ''}</small></span></div>;
                 })}
               </div>
-              <div className="signal-note"><strong><Icon name="radio" size={14}/> Jak działają pomiary?</strong><span>Czujniki wysyłają wyniki do API. Dashboard tylko je odczytuje — nie zmienia danych zapisanych w bazie.</span></div>
+              
             </aside>
           </div>
           <section className="panel table-panel" id="records" aria-labelledby="records-heading">
-            <div className="panel-heading"><div><p className="eyebrow">ARCHIWUM / ODCZYTY</p><h2 id="records-heading">Dziennik pomiarów</h2><p className="subtle">Kliknij wartość w tabeli, aby wyróżnić konkretny punkt na wykresie.</p></div><button className="section-action" type="button" onClick={() => window.print()}><Icon name="print" size={15}/> Drukuj widok</button></div>
+            <div className="panel-heading"><div><h2 id="records-heading">Historia pomiarów</h2><p className="subtle">Kliknij wartość, aby zaznaczyć ją na wykresie.</p></div><button className="section-action" type="button" onClick={() => window.print()}><Icon name="print" size={15}/> Drukuj</button></div>
             {groupedRows.length ? <div className="data-table-wrap">
               <table className="data-table">
                 <thead><tr><th scope="col">Czas pomiaru (UTC)</th>{visibleSeries.map(item => <th scope="col" key={String(item.id)}><span className="legend-dot" style={{ display: 'inline-block', marginRight: 9, backgroundColor: item.color }}/>{item.name} {item.unit ? '(' + item.unit + ')' : ''}</th>)}</tr></thead>
@@ -519,7 +501,7 @@ function App() {
                 )}</tbody>
               </table>
             </div> : <p className="placeholder">{status === 'loading' ? 'Wczytywanie…' : 'Brak pomiarów odpowiadających filtrom.'}</p>}
-            <div className="table-foot"><span>Wiersze {groupedRows.length ? safePage * rowsPerPage + 1 : 0}–{Math.min((safePage + 1) * rowsPerPage, groupedRows.length)} z {groupedRows.length} · maks. 1000 pomiarów z API</span>
+            <div className="table-foot"><span>Wiersze {groupedRows.length ? safePage * rowsPerPage + 1 : 0}–{Math.min((safePage + 1) * rowsPerPage, groupedRows.length)} z {groupedRows.length} wczytanych</span>
               <div className="table-pagination">
                 <button type="button" disabled={safePage === 0} onClick={() => setTablePage(page => Math.max(0, page - 1))}>← Poprzednia</button>
                 <span>Strona {safePage + 1} / {lastPage + 1}</span>
@@ -545,7 +527,7 @@ function App() {
               <tbody>{groupedRows.map(row => <tr key={row.key}><th scope="row">{formatDate(row.timestamp)}</th>{visibleSeries.map(item => <td key={String(item.id)}>{row.cells.has(String(item.id)) ? formatValue(row.cells.get(String(item.id))!.value) : '—'}</td>)}</tr>)}</tbody>
             </table>
           </section>
-          <footer className="footer"><span>ROVERSENSE / MISSION CONTROL</span><span>System telemetrii · Panel obserwacyjny</span></footer>
+          <footer className="footer"><span>RoverSense</span></footer>
           </>)}
         </main>
       </div>
