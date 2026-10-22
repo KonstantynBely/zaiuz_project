@@ -400,8 +400,8 @@ function App() {
             <p className="nav-caption">ADMINISTRACJA</p>
             <button className={"nav-link " + (screen === "series" ? "active" : "")} type="button" onClick={() => openAdmin("series")}><Icon name="layers"/>Serie pomiarowe</button>
             <button className={"nav-link " + (screen === "sensors" ? "active" : "")} type="button" onClick={() => openAdmin("sensors")}><Icon name="radio"/>Czujniki</button>
-            <button className={"nav-link " + (screen === "account" ? "active" : "")} type="button" onClick={() => openAdmin("account")}><Icon name="settings"/>Konto</button>
             <button className={"nav-link " + (screen === "simulations" ? "active" : "")} type="button" onClick={() => openAdmin("simulations")}><Icon name="activity"/>Symulatory</button>
+            <button className={"nav-link " + (screen === "account" ? "active" : "")} type="button" onClick={() => openAdmin("account")}><Icon name="settings"/>Zmiana hasła</button>
           </div>
         )}
         <div className="sidebar-bottom">
