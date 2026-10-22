@@ -50,6 +50,7 @@ export function createSimulationsService(
   async function execute(id:string,sensorId:string,key:string,params:SimulationParameters,signal:AbortSignal, observations:ObservedPoint[] | null) {
     let finalState:SimulationState='completed';
     let errorMessage:string|undefined;
+    let accepted=0;
     try {
       await repo.changeState(id,'running');
       const address=app.server.address();
@@ -69,8 +70,13 @@ export function createSimulationsService(
         // Zwolnij połączenie HTTP po każdym POST, zanim wykonawca przejdzie dalej.
         await res.arrayBuffer();
         await repo.count(id,res.ok);
+        if (res.ok) accepted++;
         if(!res.ok && res.status===401)throw new Error('Klucz czujnika został unieważniony');
         if(i<params.count-1 && params.mode==='live')await pause(params.intervalMs,signal);
+      }
+      if (finalState==='completed' && accepted===0) {
+        finalState='failed';
+        errorMessage='Wszystkie pomiary zostały odrzucone przez API. Sprawdź zakres serii i historię odrzuconych pomiarów.';
       }
     } catch(error) {
       finalState=signal.aborted?'stopped':'failed';
@@ -111,6 +117,20 @@ export function createSimulationsService(
         // Pobranie danych odbywa się na starcie, przed rejestracją sensora.
         const observations = observed ? await loadObserved(input.station!) : null;
         if (observations && observations.length === 0) throw new ApiError(422, 'Brak dostępnych obserwacji.');
+        if (observations) {
+          // Odrzucenie przed POST /api/sensors: nie tworzymy czujnika,
+          // którego rzeczywiste pomiary nie mogą zostać zapisane.
+          const values=observations.map(point=>point.value);
+          if (values.some(value=>!Number.isFinite(value))) {
+            throw new ApiError(422,'Źródło METAR zwróciło nieprawidłowe wartości temperatury.');
+          }
+          const observedMin=Math.min(...values);
+          const observedMax=Math.max(...values);
+          if (observedMin<target.minValue || observedMax>target.maxValue) {
+            throw new ApiError(422,
+              `Odczyty METAR (${observedMin}–${observedMax} °C) wykraczają poza zakres wybranej serii (${target.minValue}–${target.maxValue} °C). Zmień zakres serii lub wybierz inne źródło.`);
+          }
+        }
         const params:SimulationParameters={
           mode:input.mode,pattern:input.pattern,
           count:observations ? observations.length : input.count??60,
