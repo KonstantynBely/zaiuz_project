@@ -26,7 +26,8 @@ export function SimulationPanel({ token, onUnauthorized, onMeasurementsChanged, 
   const [seriesId, setSeriesId] = useState('');
   const [name, setName] = useState('');
   const [mode, setMode] = useState<'history' | 'live'>('live');
-  const [pattern, setPattern] = useState<'random' | 'sine'>('random');
+  const [pattern, setPattern] = useState<'random' | 'sine' | 'observed'>('random');
+  const [station, setStation] = useState<'EPWA' | 'EPKK' | 'EPGD'>('EPWA');
   const [count, setCount] = useState('30');
   const [intervalMs, setIntervalMs] = useState('1000');
   const [minimum, setMinimum] = useState('');
@@ -38,7 +39,7 @@ export function SimulationPanel({ token, onUnauthorized, onMeasurementsChanged, 
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
 
   const selectedSeries = useMemo(() => series.find(item => String(item.id) === seriesId), [series, seriesId]);
-  const active = useMemo(() => runs.find(run => runningStates.includes(run.state)), [runs]);
+  const activeRuns = useMemo(() => runs.filter(run => runningStates.includes(run.state)), [runs]);
 
   const load = useCallback(async (includeSeries: boolean, showLoading: boolean) => {
     if (showLoading) setLoading(true);
@@ -79,25 +80,32 @@ export function SimulationPanel({ token, onUnauthorized, onMeasurementsChanged, 
     const parsedCount = Number(count);
     const parsedInterval = Number(intervalMs);
     if (!selectedSeries) { setError('Wybierz istniejącą serię.'); return; }
-    if (!Number.isFinite(min) || !Number.isFinite(max) || minimum.trim() === '' || maximum.trim() === '' ||
-      min >= max || min < selectedSeries.minValue || max > selectedSeries.maxValue) {
+    if (pattern === 'observed' && !['°C', 'C'].includes(selectedSeries.unit ?? '')) {
+      setError('Dla rzeczywistych temperatur METAR wybierz serię z jednostką °C.');
+      return;
+    }
+    if (pattern !== 'observed' && (!Number.isFinite(min) || !Number.isFinite(max) || minimum.trim() === '' || maximum.trim() === '' ||
+      min >= max || min < selectedSeries.minValue || max > selectedSeries.maxValue)) {
       setError('Zakres symulacji musi mieścić się w granicach wybranej serii, a minimum być mniejsze od maksimum.');
       return;
     }
-    if (!Number.isInteger(parsedCount) || parsedCount < 1 || parsedCount > 1000 ||
+    if ((pattern !== 'observed' && (!Number.isInteger(parsedCount) || parsedCount < 1 || parsedCount > 1000)) ||
       !Number.isInteger(parsedInterval) || parsedInterval < 200 || parsedInterval > 60000) {
       setError('Liczba pomiarów: 1–1000. Interwał: 200–60000 ms.');
       return;
     }
     const input: SimulationInput = {
-      seriesId, mode, pattern, count: parsedCount, intervalMs: parsedInterval,
-      min, max, ...(name.trim() ? { name: name.trim() } : {}),
+      seriesId, mode, pattern, intervalMs: parsedInterval,
+      ...(pattern === 'observed' ? { station } : { count: parsedCount, min, max }),
+      ...(name.trim() ? { name: name.trim() } : {}),
     };
     setBusy(true); setError(''); setNotice('');
     try {
       const run = await adminApi.startSimulation(token, input);
       setRuns(previous => [run, ...previous.filter(item => item.id !== run.id)]);
-      setNotice('Uruchomiono symulację. Pomiarów szukaj na publicznym dashboardzie.');
+      setNotice(pattern === 'observed'
+        ? 'Pobrano rzeczywiste obserwacje i uruchomiono ich odtwarzanie. Źródło: Aviation Weather Center (METAR).'
+        : 'Uruchomiono symulację. Możesz uruchomić kolejną, maksymalnie cztery jednocześnie.');
       void load(false, false);
     } catch (reason) {
       if (reason instanceof ApiRequestError && reason.status === 401) onUnauthorized();
@@ -131,44 +139,78 @@ export function SimulationPanel({ token, onUnauthorized, onMeasurementsChanged, 
       <section className="admin-card sim-configuration" aria-labelledby="simulation-form-heading">
         <span className="admin-card-kicker">PARAMETRY MISJI</span>
         <h2 id="simulation-form-heading">Nowa symulacja</h2>
-        <p className="admin-description">Jeden aktywny symulator jednocześnie. Klucz API pozostaje wyłącznie na serwerze.</p>
+        <p className="admin-description">Do czterech aktywnych symulacji jednocześnie, każda z własnym sensorem i kluczem przechowywanym na serwerze.</p>
         <form className="admin-form" onSubmit={start}>
           <label htmlFor="sim-series">Seria pomiarowa</label>
-          <select id="sim-series" required value={seriesId} onChange={event => chooseSeries(event.target.value)} disabled={busy || !!active}>
+          <select id="sim-series" required value={seriesId} onChange={event => chooseSeries(event.target.value)} disabled={busy}>
             <option value="">Wybierz serię</option>
-            {series.map(item => <option key={String(item.id)} value={String(item.id)}>{item.name} ({item.unit || 'bez jednostki'})</option>)}
+            {series.filter(item => pattern !== 'observed' || ['°C', 'C'].includes(item.unit ?? '')).map(item =>
+              <option key={String(item.id)} value={String(item.id)}>{item.name} ({item.unit || 'bez jednostki'})</option>)}
           </select>
           <label htmlFor="sim-name">Nazwa czujnika (opcjonalna)</label>
-          <input id="sim-name" maxLength={100} value={name} onChange={event => setName(event.target.value)} disabled={busy || !!active} placeholder="Np. symulator temperatury"/>
+          <input id="sim-name" maxLength={100} value={name} onChange={event => setName(event.target.value)} disabled={busy} placeholder="Np. czujnik temperatury"/>
           <div className="admin-field-grid">
-            <div><label htmlFor="sim-mode">Tryb transmisji</label><select id="sim-mode" value={mode} onChange={event => setMode(event.target.value as 'history' | 'live')} disabled={busy || !!active}><option value="live">Live — wysyłka w odstępach</option><option value="history">Historyczny — import serii</option></select></div>
-            <div><label htmlFor="sim-pattern">Algorytm</label><select id="sim-pattern" value={pattern} onChange={event => setPattern(event.target.value as 'random' | 'sine')} disabled={busy || !!active}><option value="random">Losowy</option><option value="sine">Sinusoida</option></select></div>
+            <div><label htmlFor="sim-mode">Tryb transmisji</label>
+              <select id="sim-mode" value={mode} onChange={event => setMode(event.target.value as 'history' | 'live')} disabled={busy}>
+                <option value="live">Live — wysyłka w odstępach</option><option value="history">Historyczny — import serii</option>
+              </select></div>
+            <div><label htmlFor="sim-pattern">Źródło danych</label>
+              <select id="sim-pattern" value={pattern} onChange={event => {
+                const next = event.target.value as 'random' | 'sine' | 'observed';
+                setPattern(next);
+                if (next === 'observed' && selectedSeries && !['°C', 'C'].includes(selectedSeries.unit ?? '')) chooseSeries('');
+              }} disabled={busy}>
+                <option value="random">Syntetyczne — losowe</option>
+                <option value="sine">Syntetyczne — sinusoida</option>
+                <option value="observed">Rzeczywiste — METAR</option>
+              </select></div>
           </div>
+          {pattern === 'observed' && <>
+            <label htmlFor="sim-station">Stacja obserwacyjna</label>
+            <select id="sim-station" value={station} onChange={event => setStation(event.target.value as typeof station)} disabled={busy}>
+              <option value="EPWA">Warszawa-Okęcie (EPWA)</option>
+              <option value="EPKK">Kraków-Balice (EPKK)</option>
+              <option value="EPGD">Gdańsk (EPGD)</option>
+            </select>
+            <p className="admin-helper">Rzeczywiste odczyty temperatury (°C) z ostatnich 24 godzin, źródło: Aviation Weather Center / METAR. Liczba pomiarów wynika z dostępnych obserwacji, bez uzupełniania braków. Tryb historyczny zachowuje czas obserwacji, a live wysyła oryginalne wartości z aktualną datą transmisji.</p>
+          </>}
+          {pattern !== 'observed' && <div className="admin-field-grid">
+            <div><label htmlFor="sim-min">Minimum wartości</label><input id="sim-min" type="number" step="any" value={minimum} onChange={event => setMinimum(event.target.value)} required disabled={busy}/></div>
+            <div><label htmlFor="sim-max">Maksimum wartości</label><input id="sim-max" type="number" step="any" value={maximum} onChange={event => setMaximum(event.target.value)} required disabled={busy}/></div>
+          </div>}
           <div className="admin-field-grid">
-            <div><label htmlFor="sim-min">Minimum wartości</label><input id="sim-min" type="number" step="any" value={minimum} onChange={event => setMinimum(event.target.value)} required disabled={busy || !!active}/></div>
-            <div><label htmlFor="sim-max">Maksimum wartości</label><input id="sim-max" type="number" step="any" value={maximum} onChange={event => setMaximum(event.target.value)} required disabled={busy || !!active}/></div>
+            {pattern !== 'observed' && <div><label htmlFor="sim-count">Liczba pomiarów</label><input id="sim-count" type="number" min={1} max={1000} step={1} required value={count} onChange={event => setCount(event.target.value)} disabled={busy}/></div>}
+            <div><label htmlFor="sim-interval">Interwał (ms)</label><input id="sim-interval" type="number" min={200} max={60000} step={1} required value={intervalMs} onChange={event => setIntervalMs(event.target.value)} disabled={busy}/></div>
           </div>
-          <div className="admin-field-grid">
-            <div><label htmlFor="sim-count">Liczba pomiarów</label><input id="sim-count" type="number" min={1} max={1000} step={1} required value={count} onChange={event => setCount(event.target.value)} disabled={busy || !!active}/></div>
-            <div><label htmlFor="sim-interval">Interwał (ms)</label><input id="sim-interval" type="number" min={200} max={60000} step={1} required value={intervalMs} onChange={event => setIntervalMs(event.target.value)} disabled={busy || !!active}/></div>
-          </div>
-          <p className="admin-helper">{mode === 'history' ? 'Tryb historyczny wysyła próbki bez przerw, nadając im daty z przeszłości. Interwał oznacza odstęp między ich znacznikami czasu.' : 'Tryb live wysyła kolejne pomiary co wybrany interwał, z bieżącym czasem serwera.'}</p>
-          <button type="submit" className="admin-primary" disabled={busy || loading || !!active || !series.length}>{busy ? 'Trwa uruchamianie…' : active ? 'Zatrzymaj obecną symulację przed startem' : '▶ Rozpocznij symulację'}</button>
+          {pattern !== 'observed' && <p className="admin-helper">{mode === 'history' ? 'Historia: próbki wysyłane bez przerw, z datami wyliczonymi z interwału.' : 'Live: kolejne próbki wysyłane w zadanych odstępach, z bieżącą datą.'}</p>}
+          <button type="submit" className="admin-primary" disabled={busy || loading || activeRuns.length >= 4 || !series.length}>{busy ? 'Trwa uruchamianie…' : activeRuns.length >= 4 ? 'Osiągnięto limit 4 symulacji' : '▶ Rozpocznij symulację'}</button>
         </form>
       </section>
 
       <div className="admin-stack">
         <section className="admin-card sim-status" aria-labelledby="current-sim-heading">
-          <div className="admin-card-head"><div><span className="admin-card-kicker">TELEMETRIA / STATUS</span><h2 id="current-sim-heading">Bieżące zadanie</h2></div><span className={'sim-state ' + (active ? 'sim-running' : '')}>{active ? stateLabels[active.state] : 'Brak aktywnego'}</span></div>
-          {active ? <div>
-            <div className="sim-stat-line"><span>Seria</span><strong>{series.find(s => String(s.id) === String(active.seriesId))?.name || active.seriesId}</strong></div>
-            <div className="sim-stat-line"><span>Przyjęte pomiary</span><strong>{active.acceptedCount} / {active.parameters.count}</strong></div>
-            <div className="sim-stat-line"><span>Odrzucone pomiary</span><strong>{active.rejectedCount}</strong></div>
-            <div className="sim-stat-line"><span>Tryb</span><strong>{active.parameters.mode === 'live' ? 'Live' : 'Historyczny'}</strong></div>
-            <div className="sim-progress" role="progressbar" aria-label="Przesłane próbki" aria-valuemin={0} aria-valuemax={active.parameters.count} aria-valuenow={Math.min(active.parameters.count, active.acceptedCount + active.rejectedCount)}><span style={{width: Math.min(100, 100 * (active.acceptedCount + active.rejectedCount) / active.parameters.count) + '%'}}/></div>
-            {active.error && <p className="form-message error" role="alert">{active.error}</p>}
-            <div className="sim-actions"><button className="admin-danger" type="button" disabled={busy || active.state === 'stopping'} onClick={() => {void stop(active.id);}}>{busy ? 'Zatrzymywanie…' : '■ Zatrzymaj'}</button><button className="admin-minor" type="button" onClick={onOpenDashboard}>Otwórz wykres →</button></div>
-          </div> : <><p className="admin-empty">Wybierz serię i uruchom symulator, aby śledzić postęp pomiarów.</p><button className="admin-minor" type="button" onClick={onOpenDashboard}>Zobacz dashboard →</button></>}
+          <div className="admin-card-head">
+            <div><span className="admin-card-kicker">TELEMETRIA / STATUS</span><h2 id="current-sim-heading">Aktywne symulacje</h2></div>
+            <span className="admin-counter">{activeRuns.length} / 4</span>
+          </div>
+          {activeRuns.length === 0 && <p className="admin-empty">Brak aktywnych symulacji. Możesz uruchomić do czterech jednocześnie.</p>}
+          <div className="sim-history-list">
+            {activeRuns.map(run => <div key={run.id} className="sim-active-card">
+              <div className="admin-card-head">
+                <div><strong>Symulacja #{run.id}</strong><p className="admin-helper">{series.find(s => String(s.id) === String(run.seriesId))?.name || 'Seria ' + run.seriesId}</p></div>
+                <span className="sim-state sim-running">{stateLabels[run.state]}</span>
+              </div>
+              <div className="sim-stat-line"><span>Przyjęte / wszystkie</span><strong>{run.acceptedCount} / {run.parameters.count}</strong></div>
+              <div className="sim-stat-line"><span>Odrzucone</span><strong>{run.rejectedCount}</strong></div>
+              <div className="sim-stat-line"><span>Źródło</span><strong>{run.parameters.pattern === 'observed' ? 'METAR ' + (run.parameters.station ?? '') : run.parameters.pattern === 'sine' ? 'Sinusoida' : 'Losowe'} · {run.parameters.mode === 'live' ? 'Live' : 'Historyczne'}</strong></div>
+              <div className="sim-progress" role="progressbar" aria-label={'Postęp symulacji ' + run.id} aria-valuemin={0} aria-valuemax={run.parameters.count} aria-valuenow={Math.min(run.parameters.count, run.acceptedCount + run.rejectedCount)}><span style={{width: Math.min(100, 100 * (run.acceptedCount + run.rejectedCount) / run.parameters.count) + '%'}}/></div>
+              {run.error && <p className="form-message error" role="alert">{run.error}</p>}
+              <div className="sim-actions">
+                <button className="admin-danger" type="button" disabled={busy || run.state === 'stopping'} onClick={() => {void stop(run.id);}}>■ Zatrzymaj #{run.id}</button>
+                <button className="admin-minor" type="button" onClick={onOpenDashboard}>Otwórz wykres →</button>
+              </div>
+            </div>)}
+          </div>
           <p className="sim-refresh">Status odświeżany co 2,5 s{lastRefresh ? ' · ' + lastRefresh.toLocaleTimeString('pl-PL') : ''}</p>
         </section>
         <section className="admin-card" aria-labelledby="history-sim-heading">
@@ -177,7 +219,7 @@ export function SimulationPanel({ token, onUnauthorized, onMeasurementsChanged, 
           {!loading && runs.length === 0 && <p className="admin-empty">Nie uruchomiono jeszcze żadnej symulacji.</p>}
           <div className="sim-history-list">
             {runs.slice(0, 8).map(run => <div className="sim-history-row" key={run.id}>
-              <div><strong>Symulacja #{run.id}</strong><span>{series.find(s => String(s.id) === String(run.seriesId))?.name || 'Seria ' + run.seriesId} · {dateLabel(run.startedAt)}</span></div>
+              <div><strong>Symulacja #{run.id}</strong><span>{series.find(s => String(s.id) === String(run.seriesId))?.name || 'Seria ' + run.seriesId} · {dateLabel(run.startedAt)}{run.parameters.pattern === 'observed' ? ' · AWC METAR ' + (run.parameters.station ?? '') : ''}</span></div>
               <div><span className={'sim-state ' + (runningStates.includes(run.state) ? 'sim-running' : run.state === 'failed' ? 'sim-failed' : '')}>{stateLabels[run.state]}</span><small>{run.acceptedCount} OK / {run.rejectedCount} błędów</small></div>
               {run.error && <p className="sim-error-text">{run.error}</p>}
             </div>)}
