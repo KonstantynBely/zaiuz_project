@@ -113,3 +113,11 @@
 @media (max-width: 1110px) { .sim-layout { grid-template-columns: 1fr; } }
 @media (max-width: 640px) { .sim-history-row > div:last-of-type { justify-items: start; } .sim-layout { gap: 13px; } }
 @media print { .simulation-view { display: none !important; } }
+
+/* Niezależne zadania działające równolegle. */
+.sim-active-card { padding: 19px 0 23px; border-top: 1px solid #344148; }
+.sim-active-card:first-child { border-top: 0; }
+.sim-active-card .admin-card-head { margin-bottom: 9px; }
+.sim-active-card .admin-card-head strong { color: #efdfca; font: 700 13px 'Space Grotesk', sans-serif; }
+.sim-active-card .admin-helper { margin: 6px 0 0; }
+.sim-active-card .sim-progress { margin: 13px 0 17px; }
