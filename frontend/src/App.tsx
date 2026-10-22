@@ -5,6 +5,7 @@ import { adminApi } from './api/admin';
 import { AdminPanel, type AdminView } from './features/admin/AdminPanel';
 import { SimulationPanel } from './features/admin/SimulationPanel';
 import { groupMeasurements } from './features/dashboard/measurementRows';
+import { appendStreamMeasurement, type StreamFilter } from './features/dashboard/measurementStream';
 import './styles/app.css';
 
 type LoadState = 'loading' | 'ready' | 'error';
@@ -172,6 +173,7 @@ function App() {
   const [chartMode, setChartMode] = useState<'percent' | 'raw'>('percent');
   const [rawSeriesId, setRawSeriesId] = useState('');
   const [hidden, setHidden] = useState<string[]>([]);
+  const streamFilterRef = useRef<StreamFilter>({ range: 'all', hiddenSeriesIds: [], availableSeriesIds: [] });
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [compact, setCompact] = useState(() => window.matchMedia('(max-width: 940px)').matches);
@@ -282,6 +284,15 @@ function App() {
     return () => controller.abort();
   }, [preview, reload, range, customDates, hidden]);
 
+  // Utrzymuj bieżący filtr osobno od połączenia, bez rozłączania SSE przy każdej zmianie zakresu.
+  useEffect(() => {
+    streamFilterRef.current = {
+      range, from: customDates.from, to: customDates.to,
+      hiddenSeriesIds: hidden,
+      availableSeriesIds: liveSeries.map(item => String(item.id)),
+    };
+  }, [range, customDates, hidden, liveSeries]);
+
   // SSE jest strumieniem powiadomień; po ponownym połączeniu pobieramy brakujące dane przez REST.
   useEffect(() => {
     if (preview || typeof EventSource === 'undefined') {
@@ -298,16 +309,13 @@ function App() {
     source.addEventListener('measurement', (event: MessageEvent<string>) => {
       try {
         const item = JSON.parse(event.data) as Measurement;
-        if (!item || typeof item.value !== 'number' || !Number.isFinite(item.value) ||
-            !item.timestamp || !item.id || !item.seriesId || hidden.includes(String(item.seriesId))) return;
-        setLiveMeasurements(previous => {
-          if (previous.some(current => String(current.id) === String(item.id))) return previous;
-          return [item, ...previous].sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp)).slice(0, 1000);
-        });
+        const filter = streamFilterRef.current;
+        const now = Date.now();
+        setLiveMeasurements(previous => appendStreamMeasurement(previous, item, filter, now));
       } catch { /* Nieprawidłowa ramka nie zatrzymuje strumienia. */ }
     });
     return () => source.close();
-  }, [preview, hidden]);
+  }, [preview]);
 
   const series = preview ? previewSeries : liveSeries;
   const measurements = preview ? previewMeasurements : liveMeasurements;
