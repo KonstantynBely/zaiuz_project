@@ -23,11 +23,13 @@ export interface SimulationInput {
   seriesId: string;
   name?: string;
   mode: 'history' | 'live';
-  pattern: 'random' | 'sine';
-  count: number;
+  pattern: 'random' | 'sine' | 'observed';
+  station?: 'EPWA' | 'EPKK' | 'EPGD';
+  count?: number;
   intervalMs: number;
-  min: number;
-  max: number;
+  min?: number;
+  max?: number;
+  source?: 'AWC METAR';
 }
 export interface Simulation {
   id: string;
