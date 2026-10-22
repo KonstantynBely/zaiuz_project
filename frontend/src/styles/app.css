@@ -100,10 +100,8 @@ a { color: inherit; text-decoration: none; }
 .signal-list { display: grid; gap: 0; padding: 0 19px; }
 .signal-item { display: flex; align-items: center; gap: 12px; padding: 15px 0; border-top: 1px solid #314047; }
 .signal-item:first-child { border-top: 0; }
-.signal-orb { width: 36px; height: 36px; border-radius: 10px; background: #2b3438; display: grid; place-items: center; color: #d4a67e; border: 1px solid #455057; flex-shrink: 0; }
 .signal-item-main { min-width: 0; flex: 1; }
 .signal-item-main strong { display: block; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #e9e2db; }
-.signal-item-main span { display: block; font-size: 10px; margin-top: 5px; color: #899c9f; }
 .signal-item-value { font: 600 15px 'Space Grotesk', sans-serif; white-space: nowrap; }
 .signal-item-value small { color: #8d9da0; font-size: 10px; }
 .signal-empty { color: #8a9da0; font-size: 12px; line-height: 1.7; padding: 16px 0; }
