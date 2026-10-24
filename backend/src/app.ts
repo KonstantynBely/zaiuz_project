@@ -25,6 +25,10 @@ import { simulationsRoutes } from './modules/simulations/simulations.routes.js';
 import { createEventsService } from './modules/events/events.service.js';
 import { eventsRoutes } from './modules/events/events.routes.js';
 
+declare module 'fastify' {
+  interface FastifyRequest { simulationWorker: boolean }
+}
+
 /** Composition root: zależności można wstrzykiwać w testach bez tworzenia globalnego Pool. */
 export function buildApp(options:{pool?:Pool;loadObserved?:(station:MetarStation)=>Promise<ObservedPoint[]>}={}):FastifyInstance {
   const app=Fastify({forceCloseConnections:'idle',logger:{redact:[
@@ -33,6 +37,7 @@ export function buildApp(options:{pool?:Pool;loadObserved?:(station:MetarStation
     'request.headers.x-roversense-worker-key','res.headers.set-cookie',
   ]}});
   registerErrorHandling(app);
+  app.decorateRequest('simulationWorker', false);
   app.addHook('onRequest',async(request,reply)=>{
     const sse=request.url.split('?')[0]==='/api/events' && request.method==='GET' &&
       (request.headers.accept??'').split(',').some(x=>x.trim().startsWith('text/event-stream'));
@@ -70,7 +75,10 @@ export function buildApp(options:{pool?:Pool;loadObserved?:(station:MetarStation
         request.headers.host===`127.0.0.1:${address.port}`;
       if (local && direct && typeof supplied==='string') {
         const candidate=Buffer.from(supplied);
-        if (candidate.length===workerKeyBytes.length && timingSafeEqual(candidate,workerKeyBytes)) return;
+        if (candidate.length===workerKeyBytes.length && timingSafeEqual(candidate,workerKeyBytes)) {
+          request.simulationWorker = true;
+          return;
+        }
       }
       await authService.requireAdmin(bearerToken(request));
     };

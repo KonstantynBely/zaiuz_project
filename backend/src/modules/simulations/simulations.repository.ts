@@ -1,4 +1,5 @@
 import type { Pool } from 'pg';
+import { transaction } from '../../common/transaction.js';
 import type { SimulationParameters, SimulationState } from './simulations.schema.js';
 
 export interface SimulationRow {
@@ -35,14 +36,28 @@ export function createSimulationsRepository(pool: Pool) {
         accepted ? 'UPDATE simulation_runs SET accepted_count=accepted_count+1 WHERE id=$1' :
           'UPDATE simulation_runs SET rejected_count=rejected_count+1 WHERE id=$1',[id]);
     },
-    /** Po awarii procesu nie pozostają zadania bez workera ani ważne klucze. */
+    async requestCleanup(sensorId: string) {
+      await pool.query('UPDATE simulation_sensor_cleanup SET ready=true WHERE sensor_id=$1', [sensorId]);
+    },
+    async pendingCleanup(): Promise<string[]> {
+      const rows = await pool.query<{sensor_id:string}>(
+        `SELECT q.sensor_id::text FROM simulation_sensor_cleanup q
+         WHERE q.ready=true OR EXISTS (SELECT 1 FROM simulation_runs r
+           WHERE r.sensor_id=q.sensor_id AND r.state IN ('failed','completed','stopped'))
+         ORDER BY q.sensor_id LIMIT 20`);
+      return rows.rows.map(row => row.sensor_id);
+    },
+    /** Called before accepting requests: no worker from the previous process survives. */
     async recoverOrphans() {
-      await pool.query(`WITH orphaned AS (
-        UPDATE simulation_runs SET state='failed',finished_at=now(),
-          error_summary='Przerwano podczas restartu usługi'
-        WHERE state IN ('pending','running','stopping') RETURNING sensor_id
-      ) UPDATE sensors SET revoked_at=now() WHERE id IN
-        (SELECT sensor_id FROM orphaned WHERE sensor_id IS NOT NULL) AND revoked_at IS NULL`);
+      await transaction(pool, async client => {
+        await client.query(`
+          UPDATE simulation_runs SET state='failed',finished_at=now(),
+            error_summary='Przerwano podczas restartu usługi'
+          WHERE state IN ('pending','running','stopping')`);
+        await client.query(`UPDATE sensors SET revoked_at=now() WHERE id IN
+          (SELECT sensor_id FROM simulation_sensor_cleanup) AND revoked_at IS NULL`);
+        await client.query('DELETE FROM simulation_sensor_cleanup');
+      });
     },
   };
 }

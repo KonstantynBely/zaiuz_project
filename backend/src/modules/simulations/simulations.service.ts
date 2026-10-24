@@ -46,6 +46,35 @@ export function createSimulationsService(
   // Rezerwacje obejmują żądania Start, które wciąż pobierają dane lub tworzą sensor.
   // Zwiększamy licznik synchronicznie przed pierwszym await, więc żądania nie omijają limitu.
   let pendingStarts=0;
+  let closing = false;
+  let cleanupTimer: ReturnType<typeof setTimeout> | undefined;
+  let cleanupTask: Promise<void> | undefined;
+
+  async function retryCleanup() {
+    try {
+      for (const sensorId of await repo.pendingCleanup()) {
+        if (closing) break;
+        try { await sensorApi.revokeSensor(sensorId); }
+        catch (error) { app.log.error({ err:error, sensorId }, 'Ponowienie sprzątania czujnika nie powiodło się'); }
+      }
+    } catch (error) {
+      app.log.error({ err:error }, 'Nie udało się odczytać kolejki sprzątania czujników');
+    } finally {
+      if (!closing) scheduleCleanup();
+    }
+  }
+  function scheduleCleanup() {
+    cleanupTimer = setTimeout(() => { cleanupTask = retryCleanup(); }, 5000);
+    cleanupTimer.unref();
+  }
+  scheduleCleanup();
+
+  async function retireSensor(sensorId: string) {
+    // The queue entry was committed together with sensor registration.
+    // Mark it ready before REST so a failed request remains retryable.
+    await repo.requestCleanup(sensorId);
+    await sensorApi.revokeSensor(sensorId);
+  }
 
   async function execute(id:string,sensorId:string,key:string,params:SimulationParameters,signal:AbortSignal, observations:ObservedPoint[] | null) {
     let finalState:SimulationState='completed';
@@ -83,7 +112,7 @@ export function createSimulationsService(
       errorMessage=error instanceof Error?error.message:'Nieznany błąd symulacji';
     } finally {
       try {
-        await sensorApi.revokeSensor(sensorId);
+        await retireSensor(sensorId);
       } catch (error) {
         app.log.error({ err:error, sensorId }, 'Nie udało się wyrejestrować sensora przez REST');
         finalState='failed';
@@ -101,12 +130,16 @@ export function createSimulationsService(
       return expose(row);
     },
     async start(input:SimulationInput) {
+      if (closing) throw new ApiError(503, 'Serwer kończy pracę');
       if(jobs.size+pendingStarts>=MAX_CONCURRENT_SIMULATIONS) {
         throw new ApiError(409,'Osiągnięto limit czterech aktywnych lub przygotowywanych symulacji.');
       }
       pendingStarts++;
       try {
-        const seriesId=parseId(String(input.seriesId));
+        if (typeof input.seriesId === 'number' && !Number.isSafeInteger(input.seriesId)) {
+          throw new ApiError(422, 'Niepoprawny identyfikator serii');
+        }
+        const seriesId=parseId(String(input.seriesId), 422);
         const target=await sensorApi.getSeries(seriesId);
         const observed = input.pattern === 'observed';
         if (observed && !input.station) throw new ApiError(422, 'Wybierz stację pomiarową.');
@@ -144,7 +177,7 @@ export function createSimulationsService(
         let row:SimulationRow;
         try {row=await repo.create(seriesId,sensor.id,params);}
         catch(error) {
-          try {await sensorApi.revokeSensor(sensor.id);}
+          try {await retireSensor(sensor.id);}
           catch (revokeError) {
             app.log.error({ err:revokeError, sensorId:sensor.id }, 'Nie udało się wyrejestrować sensora po błędzie tworzenia symulacji');
           }
@@ -166,9 +199,12 @@ export function createSimulationsService(
       return this.get(numeric);
     },
     async close() {
+      closing = true;
+      clearTimeout(cleanupTimer);
       const running=[...jobs.values()];
       running.forEach(x=>x.controller.abort());
       await Promise.allSettled(running.map(x=>x.finished));
+      await cleanupTask;
     },
   };
 }

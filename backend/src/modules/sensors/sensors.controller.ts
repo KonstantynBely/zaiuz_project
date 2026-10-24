@@ -8,7 +8,7 @@ export function createSensorsController(service:SensorsService) {
     async list() { return service.list(); },
     async get(req:FastifyRequest<{Params:{sensorId:string}}>) { return service.get(parseId(req.params.sensorId)); },
     async register(req:FastifyRequest<{Body:SensorInput}>, reply:FastifyReply) {
-      const sensor=await service.register(req.body);
+      const sensor=await service.register(req.body, req.simulationWorker);
       reply.header('Cache-Control','no-store');
       return reply.code(201).header('Location',`/api/sensors/${sensor.id}`).send(sensor);
     },

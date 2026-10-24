@@ -82,6 +82,10 @@ API implementuje logowanie, wylogowanie i zmianę hasła administratora; CRUD se
 
 Publiczne ścieżki to `/api/health`, `/api/series`, `/api/series/:id`, `/api/measurements` i `/api/measurements/:id`. Operacje modyfikacji serii i zarządzania czujnikami wymagają `Authorization: Bearer <token>`. Przy zapisie pomiaru wymagany jest klucz czujnika z jednorazowej odpowiedzi `POST /api/sensors`.
 
+Hasła administratora mogą zajmować najwyżej 72 bajty UTF-8 (ograniczenie bcrypt; polskie znaki mogą zajmować więcej niż jeden bajt). Dłuższe hasła są odrzucane, a nie skracane. Utworzenie tokenu jest synchronizowane ze zmianą hasła, która unieważnia wcześniejsze sesje.
+
+Migracja `002_simulation_sensor_cleanup.sql` dodaje trwałą kolejkę czujników symulatorów. Wpis powstaje w tej samej transakcji co rejestracja czujnika przez lokalnego workera. Nieudane wyrejestrowanie jest ponawiane przez REST co 5 sekund; przy starcie usługi pozostałe klucze z kolejki są unieważniane przed przyjmowaniem żądań. Ręcznie zarejestrowane czujniki nie trafiają do tej kolejki. Przed uruchomieniem nowej wersji należy wykonać `npm run db:migrate` w katalogu `backend` ze skonfigurowanym `DATABASE_URL`.
+
 Przykładowe logowanie:
 
 ```bash
