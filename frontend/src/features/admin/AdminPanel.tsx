@@ -3,6 +3,8 @@ import '../../styles/admin.css';
 import type { Series } from '../../api/client';
 import { adminApi, ApiRequestError, type Sensor, type SeriesInput } from '../../api/admin';
 import { SeriesIcon, SeriesIconPicker } from '../../components/SeriesIconPicker';
+import { PasswordInput } from '../../components/PasswordInput';
+import { passwordExceedsLimit } from './passwordValidation';
 
 export type AdminView = 'series' | 'sensors' | 'account';
 
@@ -30,6 +32,7 @@ function LoginForm({ onLogin }: { onLogin: AdminPanelProps['onLogin'] }) {
   const [error, setError] = useState('');
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (passwordExceedsLimit(password)) return;
     if (!username.trim() || !password) { setError('Podaj login i hasło.'); return; }
     setBusy(true);
     setError('');
@@ -52,9 +55,9 @@ function LoginForm({ onLogin }: { onLogin: AdminPanelProps['onLogin'] }) {
             <label htmlFor="admin-username">Login</label>
             <input id="admin-username" name="username" type="text" autoComplete="username" maxLength={120} value={username} onChange={event => setUsername(event.target.value)} required/>
             <label htmlFor="admin-password">Hasło</label>
-            <input id="admin-password" name="password" type="password" autoComplete="current-password" value={password} onChange={event => setPassword(event.target.value)} required/>
+            <PasswordInput id="admin-password" name="password" autoComplete="current-password" value={password} onChange={setPassword} required/>
             {error && <p className="form-message error" role="alert">{error}</p>}
-            <button className="admin-primary" type="submit" disabled={busy}>{busy ? 'Trwa logowanie…' : 'Zaloguj się'}</button>
+            <button className="admin-primary" type="submit" disabled={busy || passwordExceedsLimit(password)}>{busy ? 'Trwa logowanie…' : 'Zaloguj się'}</button>
           </form>
         </section>
       </div>
@@ -210,6 +213,7 @@ export function AdminPanel({ view, token, onLogin, onLogout, onUnauthorized, onS
   }
   async function changePassword(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if ([oldPassword, nextPassword, repeatPassword].some(passwordExceedsLimit)) return;
     if (nextPassword.length < 8) { setError('Nowe hasło musi mieć minimum 8 znaków.'); return; }
     if (nextPassword !== repeatPassword) { setError('Nowe hasła nie są identyczne.'); return; }
     setBusy(true); setError('');
@@ -303,10 +307,10 @@ export function AdminPanel({ view, token, onLogin, onLogout, onUnauthorized, onS
           <h2 id="password-heading">Zmiana hasła</h2>
           <p className="admin-description">Po zapisaniu nowego hasła wszystkie dotychczasowe sesje zostaną unieważnione.</p>
           <form className="admin-form" onSubmit={changePassword}>
-            <label htmlFor="current-password">Obecne hasło</label><input id="current-password" type="password" autoComplete="current-password" value={oldPassword} onChange={event => setOldPassword(event.target.value)} required/>
-            <label htmlFor="new-password">Nowe hasło</label><input id="new-password" type="password" autoComplete="new-password" minLength={8} value={nextPassword} onChange={event => setNextPassword(event.target.value)} required/>
-            <label htmlFor="repeat-password">Powtórz nowe hasło</label><input id="repeat-password" type="password" autoComplete="new-password" value={repeatPassword} onChange={event => setRepeatPassword(event.target.value)} required/>
-            <button className="admin-primary" disabled={busy} type="submit">{busy ? 'Zapisywanie…' : 'Zmień hasło'}</button>
+            <label htmlFor="current-password">Obecne hasło</label><PasswordInput id="current-password" autoComplete="current-password" value={oldPassword} onChange={setOldPassword} required/>
+            <label htmlFor="new-password">Nowe hasło</label><PasswordInput id="new-password" autoComplete="new-password" minLength={8} value={nextPassword} onChange={setNextPassword} required/>
+            <label htmlFor="repeat-password">Powtórz nowe hasło</label><PasswordInput id="repeat-password" autoComplete="new-password" value={repeatPassword} onChange={setRepeatPassword} required/>
+            <button className="admin-primary" disabled={busy || [oldPassword, nextPassword, repeatPassword].some(passwordExceedsLimit)} type="submit">{busy ? 'Zapisywanie…' : 'Zmień hasło'}</button>
           </form>
         </section>
         <section className="admin-card admin-editor"><h2>Sesja</h2><p className="admin-description">Wylogowanie zakończy bieżącą sesję.</p><button className="admin-minor" type="button" onClick={onLogout}>Wyloguj się</button></section>
