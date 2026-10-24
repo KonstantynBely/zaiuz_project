@@ -10,7 +10,7 @@ import './styles/app.css';
 
 type LoadState = 'loading' | 'ready' | 'error';
 type TimeRange = 'all' | '24h' | '7d' | '30d' | 'custom';
-type IconName = 'dashboard' | 'chart' | 'layers' | 'radio' | 'clock' | 'settings' | 'refresh' | 'arrow' | 'menu' | 'activity' | 'database' | 'planet' | 'signal' | 'print' | 'lock';
+type IconName = 'dashboard' | 'chart' | 'layers' | 'radio' | 'clock' | 'settings' | 'refresh' | 'arrow' | 'menu' | 'activity' | 'database' | 'planet' | 'signal' | 'print' | 'lock' | 'logout';
 
 const timeRanges: { value: TimeRange; label: string }[] = [
   { value: 'all', label: 'Całość' }, { value: '24h', label: '24 h' },
@@ -64,6 +64,7 @@ function Icon({ name, size = 18 }: { name: IconName; size?: number }) {
     planet: <><circle cx="12" cy="12" r="6"/><path d="M2 15c3 3 17 1 20-6"/></>,
     signal: <><path d="M3 19v-3m6 3v-7m6 7V8m6 11V4"/></>,
     print: <><path d="M6 9V3h12v6M6 17H4V9h16v8h-2M6 14h12v7H6z"/></>,
+    logout: <><path d="M9 4H4v16h5M10 12h11m-4-4 4 4-4 4"/></>,
     lock: <><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3"/></>,
   };
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]}</svg>;
@@ -203,6 +204,7 @@ function App() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [compact, menuOpen]);
+  const [activeSection, setActiveSection] = useState('dashboard');
   const [screen, setScreen] = useState<'dashboard' | AdminView | 'simulations'>('dashboard');
   // Sesja istnieje wyłącznie w pamięci bieżącej karty.
   const [session, setSession] = useState<{ token: string; expiresAt: number } | null>(null);
@@ -245,6 +247,41 @@ function App() {
     if (!['dashboard', 'telemetry', 'records'].includes(anchor)) return;
     const frame = window.requestAnimationFrame(() => scrollToSection(anchor));
     return () => window.cancelAnimationFrame(frame);
+  }, [screen]);
+
+  useEffect(() => {
+    if (screen !== 'dashboard') return;
+    let frame = 0;
+    const updateSection = () => {
+      frame = 0;
+      const sections = ['dashboard', 'telemetry', 'records'];
+      const threshold = Math.min(window.innerHeight * .25, 160);
+      let current = 'dashboard';
+      for (const id of sections) {
+        const section = document.getElementById(id);
+        if (section && section.getBoundingClientRect().top <= threshold) current = id;
+      }
+      // Historia staje sie aktywna takze po dotarciu do konca strony.
+      if (window.scrollY > 0 && window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 2) {
+        current = 'records';
+      }
+      setActiveSection(current);
+    };
+    const scheduleUpdate = () => {
+      if (!frame) frame = window.requestAnimationFrame(updateSection);
+    };
+    window.addEventListener('scroll', scheduleUpdate, { passive: true });
+    window.addEventListener('resize', scheduleUpdate);
+    const observer = new ResizeObserver(scheduleUpdate);
+    const main = document.getElementById('dashboard');
+    if (main) observer.observe(main);
+    scheduleUpdate();
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener('scroll', scheduleUpdate);
+      window.removeEventListener('resize', scheduleUpdate);
+      observer.disconnect();
+    };
   }, [screen]);
 
   useEffect(() => {
@@ -358,7 +395,6 @@ function App() {
     setReload(value => value + 1);
   }
   const isReady = status === 'ready';
-  const isOnline = isReady && !preview;
   function applyDates(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const from = draftFrom ? new Date(draftFrom).valueOf() : undefined;
@@ -386,9 +422,9 @@ function App() {
           <span className="brand-copy"><strong>RoverSense</strong></span>
         </a>
         <nav className="side-nav" aria-label="Nawigacja główna">
-          <a className={"nav-link " + (screen === "dashboard" ? "active" : "")} href="#dashboard" aria-current={screen === 'dashboard' ? 'page' : undefined} onClick={openDashboard}><Icon name="dashboard"/>Pulpit</a>
-          <a className="nav-link" href="#telemetry" onClick={openDashboard}><Icon name="chart"/>Wykres pomiarów</a>
-          <a className="nav-link" href="#records" onClick={openDashboard}><Icon name="clock"/>Historia pomiarów</a>
+          <a className={'nav-link ' + (screen === 'dashboard' && activeSection === 'dashboard' ? 'active' : '')} href="#dashboard" aria-current={screen === 'dashboard' && activeSection === 'dashboard' ? 'location' : undefined} onClick={() => { setActiveSection('dashboard'); openDashboard(); }}><Icon name="dashboard"/>Pulpit</a>
+          <a className={'nav-link ' + (screen === 'dashboard' && activeSection === 'telemetry' ? 'active' : '')} href="#telemetry" aria-current={screen === 'dashboard' && activeSection === 'telemetry' ? 'location' : undefined} onClick={() => { setActiveSection('telemetry'); openDashboard(); }}><Icon name="chart"/>Wykres pomiarów</a>
+          <a className={'nav-link ' + (screen === 'dashboard' && activeSection === 'records' ? 'active' : '')} href="#records" aria-current={screen === 'dashboard' && activeSection === 'records' ? 'location' : undefined} onClick={() => { setActiveSection('records'); openDashboard(); }}><Icon name="clock"/>Historia pomiarów</a>
         </nav>
         {session && (
           <div className="nav-secondary">
@@ -400,20 +436,12 @@ function App() {
           </div>
         )}
         <div className="sidebar-bottom">
-          {!session && <button className="sidebar-login-button" type="button" onClick={() => openAdmin('account')}><Icon name="lock" size={15}/> Zaloguj się</button>}
+          {session ? <button className="sidebar-login-button" type="button" onClick={() => { onLogout(); setMenuOpen(false); }}><Icon name="logout" size={15}/> Wyloguj się</button> : <button className="sidebar-login-button" type="button" onClick={() => openAdmin('account')}><Icon name="lock" size={15}/> Zaloguj się</button>}
         </div>
       </aside>
       <div className="workspace" inert={compact && menuOpen} aria-hidden={compact && menuOpen}>
-        <header className="topbar">
-          <button ref={menuButton} className="mobile-menu" type="button" aria-label={menuOpen ? 'Zamknij menu' : 'Otwórz menu'} aria-controls="mission-navigation" aria-expanded={menuOpen} onClick={() => setMenuOpen(value => !value)}><Icon name="menu"/></button>
-          <div className="breadcrumb"><b>{screen === "dashboard" ? "Pulpit" : screen === "series" ? "Serie pomiarowe" : screen === "sensors" ? "Czujniki" : screen === "simulations" ? "Symulatory" : "Konto"}</b></div>
-          <div className="topbar-right">
-            <span className={'connection-indicator ' + (!isReady ? 'offline' : '')} role="status" aria-label={preview ? 'Dane demonstracyjne' : isOnline ? 'Połączono z serwerem' : status === 'loading' ? 'Łączenie z serwerem' : 'Brak połączenia z serwerem'}>
-              <span className={'beacon ' + (!isReady ? 'error' : '')} aria-hidden="true"/>
-              <span>{preview ? 'Podgląd' : isOnline ? 'Połączono' : status === 'loading' ? 'Łączenie…' : 'Brak połączenia'}</span>
-            </span>
-          </div>
-        </header>
+        {screen === 'dashboard' && <div className="dashboard-landscape" aria-hidden="true"><img src={roverHero} alt=""/></div>}
+        <button ref={menuButton} className="mobile-menu" type="button" aria-label={menuOpen ? 'Zamknij menu' : 'Otwórz menu'} aria-controls="mission-navigation" aria-expanded={menuOpen} onClick={() => setMenuOpen(value => !value)}><Icon name="menu"/></button>
         <main className="main-content" id="dashboard" tabIndex={-1}>
           {screen === 'simulations' && session ? (
             <SimulationPanel token={session.token} onUnauthorized={onUnauthorized} onMeasurementsChanged={onSeriesChanged} onOpenDashboard={() => { openDashboard(); setReload(value => value + 1); }}/>
@@ -425,13 +453,6 @@ function App() {
           </div>
           {preview && <div className="notice" role="status"><strong>Tryb podglądu UI.</strong> Wyświetlane wartości są wygenerowane lokalnie i nie zostały zapisane w bazie. <button type="button" onClick={returnToApi}>Wróć do danych API</button></div>}
           {status === 'error' && !preview && <div className="notice error" role="alert">Nie udało się połączyć z API: {error}. Uruchom lokalny backend lub sprawdź połączenie. {import.meta.env.DEV && <button type="button" onClick={enablePreview}>Włącz podgląd interfejsu</button>}</div>}
-          <section className="hero" aria-label="RoverSense — monitorowanie pomiarów">
-            <div className="hero-visual"><img className="rover-scene" src={roverHero} alt="Ilustracja łazika marsjańskiego"/></div>
-            <div className="hero-copy">
-              <h2>Dane z czujników</h2>
-              <p>Wykresy i historia pomiarów w jednym miejscu.</p>
-            </div>
-          </section>
           <section className="metric-grid" aria-label="Podsumowanie pomiarów">
             <div className="metric-card"><span className="metric-icon"><Icon name="layers"/></span><div className="metric-body"><span className="metric-label">Serie pomiarowe</span><strong className="metric-value">{isReady ? series.length : '—'}</strong></div></div>
             <div className="metric-card"><span className="metric-icon teal"><Icon name="activity"/></span><div className="metric-body"><span className="metric-label" title="Liczba wczytanych pomiarów, maksymalnie 1000 w jednym zapytaniu">Wczytane pomiary</span><strong className="metric-value">{isReady ? measurements.length : '—'}</strong></div></div>

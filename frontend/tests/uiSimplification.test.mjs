@@ -20,7 +20,6 @@ test('dashboard nie pokazuje ozdobnych etykiet ani technicznych statusów', () =
 test('podstawowe funkcje i bezpieczeństwo pozostały dostępne', () => {
   assert.match(app, /new EventSource\('\/api\/events'\)/);
   assert.match(app, /onClick=\{\(\) => window\.print\(\)\}/);
-  assert.match(app, /aria-label="Połączenie z serwerem"|aria-label=\{preview/);
   assert.match(admin, /<details className="admin-card admin-help-details">/);
   assert.match(admin, /Po zamknięciu tej informacji klucz nie będzie dostępny ponownie/);
   assert.match(simulations, /Aviation Weather Center \(METAR\)/);
