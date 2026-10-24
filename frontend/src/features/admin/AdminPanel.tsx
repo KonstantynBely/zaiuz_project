@@ -2,6 +2,7 @@ import { useEffect, useId, useState, type FormEvent } from 'react';
 import '../../styles/admin.css';
 import type { Series } from '../../api/client';
 import { adminApi, ApiRequestError, type Sensor, type SeriesInput } from '../../api/admin';
+import { SeriesIcon, SeriesIconPicker } from '../../components/SeriesIconPicker';
 
 export type AdminView = 'series' | 'sensors' | 'account';
 
@@ -100,8 +101,7 @@ function SeriesEditor({ series, busy, onSave, onCancel }: {
           <div><label htmlFor="series-unit">Jednostka (opcjonalnie)</label><input id="series-unit" value={unit} maxLength={20} onChange={event => setUnit(event.target.value)} placeholder="np. °C"/></div>
           <div><label htmlFor="series-color">Kolor wykresu</label><div className="color-control"><input id="series-color" type="color" value={color} onChange={event => setColor(event.target.value)}/><span>{color.toUpperCase()}</span></div></div>
         </div>
-        <label htmlFor="series-icon">Ikona / oznaczenie (opcjonalnie)</label>
-        <input id="series-icon" value={icon} maxLength={60} onChange={event => setIcon(event.target.value)} placeholder="np. thermometer"/>
+        <SeriesIconPicker value={icon} onChange={setIcon} disabled={busy}/>
         {error && <p className="form-message error" role="alert">{error}</p>}
         <button className="admin-primary" type="submit" disabled={busy}>{busy ? 'Zapisywanie…' : series ? 'Zapisz zmiany' : 'Utwórz serię'}</button>
       </form>
@@ -243,7 +243,7 @@ export function AdminPanel({ view, token, onLogin, onLogout, onUnauthorized, onS
             {series.length === 0 && !loading ? <p className="admin-empty">Nie ma jeszcze serii. Utwórz pierwszą, aby przypisać do niej czujnik.</p> :
               <div className="admin-list">{series.map(item => (
                 <div className="admin-list-item" key={String(item.id)}>
-                  <span className="admin-series-color" style={{ backgroundColor: item.color }} aria-hidden="true"/>
+                  <span className="admin-series-icon" style={{ color: item.color }}><SeriesIcon value={item.icon}/></span>
                   <div className="admin-list-info"><strong>{item.name}</strong><span>{item.minValue} – {item.maxValue} {item.unit || ''} · ID {item.id}</span></div>
                   <div className="admin-actions"><button className="admin-minor" type="button" disabled={busy} onClick={() => { setEditingSeries(item); setEditorVisible(true); setNotice(''); }}>Edytuj</button><button className="admin-danger" type="button" disabled={busy} onClick={() => { void deleteSeries(item); }}>Usuń</button></div>
                 </div>

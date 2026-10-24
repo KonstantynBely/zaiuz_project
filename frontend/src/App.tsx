@@ -4,6 +4,7 @@ import roverHero from './assets/rover-hero.svg';
 import { useAdminSession } from './features/admin/useAdminSession';
 import { AdminPanel, type AdminView } from './features/admin/AdminPanel';
 import { Icon } from './components/Icon';
+import { SeriesIcon } from './components/SeriesIconPicker';
 import { Sidebar } from './components/Sidebar';
 import { SimulationPanel } from './features/admin/SimulationPanel';
 import { TelemetryChart } from './features/dashboard/TelemetryChart';
@@ -279,7 +280,7 @@ function App() {
                 {dateError && <p className="date-error" role="alert">{dateError}</p>}
               </form>
               <div className="series-toggles" role="group" aria-label="Widoczne serie">
-                {series.map((item, index) => <button key={String(item.id)} className="series-toggle" type="button" aria-pressed={!hidden.includes(String(item.id))} onClick={() => toggleSeries(String(item.id))}><span className="legend-dot" style={{ backgroundColor: item.color }}/><span className={'series-glyph style-' + (index % 4)} aria-hidden="true"/> {item.name}</button>)}
+                {series.map((item, index) => <button key={String(item.id)} className="series-toggle" type="button" aria-pressed={!hidden.includes(String(item.id))} onClick={() => toggleSeries(String(item.id))}><span style={{ color: item.color }}>{item.icon ? <SeriesIcon value={item.icon} size={16}/> : <span className="legend-dot" style={{ display: 'block', backgroundColor: item.color }}/>}</span><span className={'series-glyph style-' + (index % 4)} aria-hidden="true"/> {item.name}</button>)}
               </div>
               <div className="chart-mode-controls">
                 <div className="range-tabs" role="group" aria-label="Rodzaj skali wykresu">
