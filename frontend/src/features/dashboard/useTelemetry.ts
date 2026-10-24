@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import {
-  fetchHealth, fetchMeasurements, fetchLatestForSeries, fetchSeries,
+  fetchHealth, fetchMeasurements, fetchSeries,
   type Measurement, type Series,
 } from '../../api/client';
+import { loadLatestReadings } from './latestReadings';
 import { TelemetryReconciler, preferLatest, type StreamFilter, type MeasurementRange } from './measurementStream';
 
 interface Options {
@@ -22,6 +23,7 @@ export function useTelemetry({ preview, reload, setReload, range, customDates, h
   const [liveMeasurements, setLiveMeasurements] = useState<Measurement[]>([]);
   const reconcilerRef = useRef(new TelemetryReconciler());
   const [latestBySeries, setLatestBySeries] = useState<Record<string, Measurement | null>>({});
+  const [latestErrors, setLatestErrors] = useState<Record<string, string>>({});
   const [now, setNow] = useState(Date.now);
 
   // A rolling time window changes locally; a clock tick does not refetch REST.
@@ -89,26 +91,33 @@ export function useTelemetry({ preview, reload, setReload, range, customDates, h
   const seriesKey = liveSeries.map(item => String(item.id)).sort().join(',');
   useEffect(() => {
     if (preview) return;
-    const controller = new AbortController();
     const available = new Set(liveSeries.map(item => String(item.id)));
     setLatestBySeries(previous => Object.fromEntries(
       Object.entries(previous).filter(([key]) => available.has(key)),
     ));
-    if (!liveSeries.length) return () => controller.abort();
-    void fetchLatestForSeries(liveSeries, controller.signal)
-      .then(results => {
-        if (controller.signal.aborted) return;
-        setLatestBySeries(previous => {
-          const next = { ...previous };
-          for (const { seriesId, measurement } of results) {
-            if (measurement) next[seriesId] = preferLatest(next[seriesId], measurement) ?? null;
-            else if (!(seriesId in next)) next[seriesId] = null;
-          }
-          return next;
-        });
-      })
-      .catch(() => { /* A failed lookup is not evidence that a series has no readings. */ });
-    return () => controller.abort();
+    setLatestErrors(previous => Object.fromEntries(
+      Object.entries(previous).filter(([key]) => available.has(key)),
+    ));
+    if (!liveSeries.length) return;
+    return loadLatestReadings(liveSeries, results => {
+      setLatestBySeries(previous => {
+        const next = { ...previous };
+        for (const result of results) {
+          if (result.error !== undefined) continue;
+          if (result.measurement) next[result.seriesId] = preferLatest(next[result.seriesId], result.measurement) ?? null;
+          else if (!(result.seriesId in next)) next[result.seriesId] = null;
+        }
+        return next;
+      });
+      setLatestErrors(previous => {
+        const next = { ...previous };
+        for (const result of results) {
+          if (result.error !== undefined) next[result.seriesId] = result.error;
+          else delete next[result.seriesId];
+        }
+        return next;
+      });
+    });
     // Load independently of chart filters; reload covers manual refresh and SSE reconnect.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [preview, seriesKey, reload]);
@@ -136,5 +145,5 @@ export function useTelemetry({ preview, reload, setReload, range, customDates, h
     return () => source.close();
   }, [preview]);
 
-  return { status, setStatus, error, liveSeries, liveMeasurements, latestBySeries, now };
+  return { status, setStatus, error, liveSeries, liveMeasurements, latestBySeries, latestErrors, now };
 }

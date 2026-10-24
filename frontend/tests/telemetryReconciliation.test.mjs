@@ -56,3 +56,28 @@ test('latest measurement ignores hidden history filters and older late-arriving 
   assert.equal(preferLatest(newer,old).id,'new');
   assert.equal(reconcileMeasurements([newer],[old],{ ...custom, hiddenSeriesIds:['b'] },now).length,0);
 });
+
+test('irrelevant SSE bursts cannot evict a buffered history measurement', () => {
+  const state = new TelemetryReconciler();
+  const filter = { ...custom, hiddenSeriesIds: ['b'] };
+  const generation = state.begin(filter, now);
+  const wanted = point('wanted', t(-100_000));
+  state.receive(wanted, now);
+  for (let i = 0; i < 1100; i++) {
+    state.receive(point('outside-' + i, t(-i)), now);
+    state.receive(point('hidden-' + i, t(-80_000), 'b'), now);
+    state.receive(point('unknown-' + i, t(-80_000), 'removed'), now);
+  }
+  assert.deepEqual(state.finish(generation, [], filter, now), [wanted]);
+});
+
+test('first-load buffering survives a burst from a series absent from REST', () => {
+  const state = new TelemetryReconciler();
+  const generation = state.begin({ ...all, availableSeriesIds: [] }, now);
+  const wanted = point('wanted', t(-100_000));
+  state.receive(wanted, now);
+  for (let i = 0; i < 1100; i++) {
+    state.receive(point(String(i), t(-i), 'removed'), now);
+  }
+  assert.deepEqual(state.finish(generation, [], all, now), [wanted]);
+});

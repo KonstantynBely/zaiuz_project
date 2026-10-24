@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
-import { createSimulationPoller } from './simulationPolling';
+import { createSimulationMonitor } from './simulationMonitor';
 import type { Series } from '../../api/client';
 import { adminApi, ApiRequestError, type Simulation, type SimulationInput, type SimulationState } from '../../api/admin';
 
@@ -37,7 +37,8 @@ export function SimulationPanel({ token, onUnauthorized, onMeasurementsChanged, 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [pollError, setPollError] = useState('');
-  const pollerRef = useRef<ReturnType<typeof createSimulationPoller<Simulation[]>> | null>(null);
+  const [seriesError, setSeriesError] = useState('');
+  const pollerRef = useRef<ReturnType<typeof createSimulationMonitor> | null>(null);
   const sessionEpoch = useRef(0);
   const [notice, setNotice] = useState('');
 
@@ -47,41 +48,35 @@ export function SimulationPanel({ token, onUnauthorized, onMeasurementsChanged, 
   useEffect(() => {
     let active = true;
     const epoch = ++sessionEpoch.current;
-    const controller = new AbortController();
     setLoading(true);
-
-    void adminApi.listSeries(controller.signal)
-      .then(items => {
-        if (active && sessionEpoch.current === epoch) setSeries(items);
-      })
-      .catch(reason => {
-        if (!active || sessionEpoch.current !== epoch || controller.signal.aborted) return;
-        if (reason instanceof ApiRequestError && reason.status === 401) onUnauthorized();
-        else setPollError(describe(reason));
-      })
-      .finally(() => {
+    setSeriesError('');
+    setPollError('');
+    const reportError = (reason: unknown | null, update: (message: string) => void) => {
+      if (!active || sessionEpoch.current !== epoch) return;
+      if (reason instanceof ApiRequestError && reason.status === 401) onUnauthorized();
+      else update(reason === null ? '' : describe(reason));
+    };
+    const poller = createSimulationMonitor({
+      loadSeries: signal => adminApi.listSeries(signal),
+      loadRuns: signal => adminApi.listSimulations(token, signal),
+      onSeries: items => {
+        if (!active || sessionEpoch.current !== epoch) return;
+        setSeries(items);
+        setLoading(false);
+      },
+      onRuns: items => {
+        if (active && sessionEpoch.current === epoch) setRuns(items);
+      },
+      onSeriesError: reason => {
+        reportError(reason, setSeriesError);
         if (active && sessionEpoch.current === epoch) setLoading(false);
-      });
-
-    const poller = createSimulationPoller<Simulation[]>({
-      load: signal => adminApi.listSimulations(token, signal),
-      apply: items => {
-        if (!active || sessionEpoch.current !== epoch) return;
-        setRuns(items);
-        setPollError('');
       },
-      fail: reason => {
-        if (!active || sessionEpoch.current !== epoch) return;
-        if (reason instanceof ApiRequestError && reason.status === 401) onUnauthorized();
-        else setPollError(describe(reason));
-      },
+      onRunsError: reason => reportError(reason, setPollError),
     });
     pollerRef.current = poller;
-    void poller.poll();
     return () => {
       active = false;
       ++sessionEpoch.current;
-      controller.abort();
       poller.stop();
       if (pollerRef.current === poller) pollerRef.current = null;
     };
@@ -167,6 +162,7 @@ export function SimulationPanel({ token, onUnauthorized, onMeasurementsChanged, 
       <h1>Symulatory</h1>
       <p>Uruchamiaj i zatrzymuj symulacje pomiarów.</p>
     </div>
+    {seriesError && <p role="alert" className="form-message error">{seriesError} Lista serii zostanie pobrana ponownie automatycznie.</p>}
     {pollError && <p role="status" className="form-message error">{pollError}</p>}
     {error && <p role="alert" className="form-message error">{error}</p>}
     {notice && <p role="status" className="form-message success">{notice}</p>}

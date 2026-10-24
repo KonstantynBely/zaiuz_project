@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Measurement, Series } from './api/client';
 import roverHero from './assets/rover-hero.svg';
-import { adminApi } from './api/admin';
+import { useAdminSession } from './features/admin/useAdminSession';
 import { AdminPanel, type AdminView } from './features/admin/AdminPanel';
 import { Icon } from './components/Icon';
 import { Sidebar } from './components/Sidebar';
@@ -63,7 +63,7 @@ function App() {
   const [chartMode, setChartMode] = useState<'percent' | 'raw'>('percent');
   const [rawSeriesId, setRawSeriesId] = useState('');
   const [hidden, setHidden] = useState<string[]>([]);
-  const { status, setStatus, error, liveSeries, liveMeasurements, latestBySeries, now } =
+  const { status, setStatus, error, liveSeries, liveMeasurements, latestBySeries, latestErrors, now } =
     useTelemetry({ preview, reload, setReload, range, customDates, hidden });
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -97,32 +97,21 @@ function App() {
   }, [compact, menuOpen]);
   const [activeSection, setActiveSection] = useState('dashboard');
   const [screen, setScreen] = useState<'dashboard' | AdminView | 'simulations'>('dashboard');
-  // Sesja istnieje wyłącznie w pamięci bieżącej karty.
-  const [session, setSession] = useState<{ token: string; expiresAt: number } | null>(null);
+  const showLogin = useCallback(() => setScreen('account'), []);
+  const { session, login, logout, clear } = useAdminSession(showLogin);
   const onLogin = useCallback((token: string, expiresIn: number) => {
-    setSession({ token, expiresAt: Date.now() + expiresIn * 1000 });
+    login(token, expiresIn);
     setScreen('series');
-  }, []);
+  }, [login]);
   const onUnauthorized = useCallback(() => {
-    setSession(null);
-    setScreen('account');
-  }, []);
+    clear();
+    showLogin();
+  }, [clear, showLogin]);
   const onSeriesChanged = useCallback(() => { setReload(value => value + 1); }, []);
   const onLogout = useCallback(() => {
-    const token = session?.token;
-    setSession(null);
+    logout();
     setScreen('dashboard');
-    if (token) void adminApi.logout(token).catch(() => {
-      // Zamknięcie lokalnej sesji ma pierwszeństwo przy awarii łączności.
-    });
-  }, [session]);
-  useEffect(() => {
-    if (!session) return;
-    const remaining = session.expiresAt - Date.now();
-    if (remaining <= 0) { onUnauthorized(); return; }
-    const timeout = window.setTimeout(onUnauthorized, remaining);
-    return () => window.clearTimeout(timeout);
-  }, [session, onUnauthorized]);
+  }, [logout]);
   function openAdmin(view: AdminView | 'simulations') {
     setScreen(view);
     setMenuOpen(false);
@@ -311,7 +300,14 @@ function App() {
                   const last = preview
                     ? previewMeasurements.find(point => String(point.seriesId) === String(item.id))
                     : latestBySeries[String(item.id)];
-                  return <div key={String(item.id)} className="signal-item"><div className="signal-item-main"><strong>{item.name}</strong></div><span className="signal-item-value" style={{ color: item.color }}>{last ? formatValue(last.value) : last === null ? 'Brak odczytów' : '…'} <small>{item.unit || ''}</small></span></div>;
+                  const failed = !preview && latestErrors[String(item.id)];
+                  return <div key={String(item.id)} className="signal-item">
+                    <div className="signal-item-main">
+                      <strong>{item.name}</strong>
+                      {failed && <span className="signal-error" role="status">Błąd odczytu — ponawianie{last ? ' (poprzednia wartość)' : ''}</span>}
+                    </div>
+                    <span className="signal-item-value" style={{ color: item.color }}>{last ? formatValue(last.value) : failed ? '—' : last === null ? 'Brak odczytów' : '…'} <small>{item.unit || ''}</small></span>
+                  </div>;
                 })}
               </div>
 

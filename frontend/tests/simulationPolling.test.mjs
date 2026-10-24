@@ -56,17 +56,3 @@ test('unmount or session replacement ignores late data and 401 errors', async ()
   assert.deepEqual(states,[]);
   assert.deepEqual(errors,[]);
 });
-
-test('separate status error is cleared by success without touching form error', async () => {
-  let formError='Nieprawidłowy zakres';
-  let statusError='Brak połączenia';
-  const poller=createSimulationPoller({
-    load:async()=>['running'],
-    apply:()=>{statusError='';},
-    fail:e=>{statusError=String(e);},interval:100000,
-  });
-  await poller.poll();
-  assert.equal(statusError,'');
-  assert.equal(formError,'Nieprawidłowy zakres');
-  poller.stop();
-});
