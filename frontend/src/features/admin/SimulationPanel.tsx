@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import '../../styles/admin.css';
 import { createSimulationMonitor } from './simulationMonitor';
 import type { Series } from '../../api/client';
 import { adminApi, ApiRequestError, type Simulation, type SimulationInput, type SimulationState } from '../../api/admin';

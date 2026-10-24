@@ -1,17 +1,19 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Measurement, Series } from './api/client';
 import roverHero from './assets/rover-hero.svg';
 import { useAdminSession } from './features/admin/useAdminSession';
-import { AdminPanel, type AdminView } from './features/admin/AdminPanel';
+import type { AdminView } from './features/admin/AdminPanel';
 import { Icon } from './components/Icon';
 import { SeriesIcon } from './components/SeriesIconPicker';
 import { Sidebar } from './components/Sidebar';
-import { SimulationPanel } from './features/admin/SimulationPanel';
 import { TelemetryChart } from './features/dashboard/TelemetryChart';
 import { MeasurementHistory } from './features/dashboard/MeasurementHistory';
 import { formatDate, formatShortTime, formatValue } from './features/dashboard/formatting';
 import { useTelemetry } from './features/dashboard/useTelemetry';
 import './styles/app.css';
+
+const AdminPanel = lazy(() => import('./features/admin/AdminPanel').then(module => ({ default: module.AdminPanel })));
+const SimulationPanel = lazy(() => import('./features/admin/SimulationPanel').then(module => ({ default: module.SimulationPanel })));
 
 type TimeRange = 'all' | '24h' | '7d' | '30d' | 'custom';
 
@@ -243,9 +245,10 @@ function App() {
         onLogout={() => { onLogout(); setMenuOpen(false); }}
       />
       <div className="workspace" inert={compact && menuOpen} aria-hidden={compact && menuOpen}>
-        {screen === 'dashboard' && <div className="dashboard-landscape" aria-hidden="true"><img src={roverHero} alt=""/></div>}
+        {screen === 'dashboard' && <div className="dashboard-landscape" aria-hidden="true"><img src={roverHero} width={2240} height={550} fetchPriority="high" alt=""/></div>}
         <button ref={menuButton} className="mobile-menu" type="button" aria-label={menuOpen ? 'Zamknij menu' : 'Otwórz menu'} aria-controls="mission-navigation" aria-expanded={menuOpen} onClick={() => setMenuOpen(value => !value)}><Icon name="menu"/></button>
         <main className="main-content" id="dashboard" tabIndex={-1}>
+          <Suspense fallback={<div className="loading-text" role="status">Wczytywanie panelu…</div>}>
           {screen === 'simulations' && session ? (
             <SimulationPanel token={session.token} onUnauthorized={onUnauthorized} onMeasurementsChanged={onSeriesChanged} onOpenDashboard={() => { openDashboard(); setReload(value => value + 1); }}/>
           ) : screen !== 'dashboard' ? (
@@ -289,9 +292,11 @@ function App() {
                 </div>
                 {chartMode === 'raw' && <label className="raw-series-select">Seria <select aria-label="Seria do wykresu rzeczywistych wartości" value={visibleSeries.some(s => String(s.id) === rawSeriesId) ? rawSeriesId : String(visibleSeries[0]?.id ?? '')} onChange={event => setRawSeriesId(event.target.value)}>{visibleSeries.map(item => <option key={String(item.id)} value={String(item.id)}>{item.name} ({item.unit || 'bez jednostki'})</option>)}</select></label>}
               </div>
+              <div className="chart-body" aria-busy={status === 'loading' && !preview}>
               {status === 'loading' && !preview ? <div className="loading-text" role="status">Pobieranie danych telemetrycznych…</div> :
                 !isReady || series.length === 0 ? <div className="empty-chart"><Icon name="database" size={28}/><strong>Nie ma jeszcze serii pomiarowych</strong><span>Dodaj serie i prześlij pomiary przez API. {import.meta.env.DEV && !preview ? <button type="button" className="section-action" onClick={enablePreview}>Zobacz przykładowy wygląd</button> : null}</span></div> :
                   <TelemetryChart series={chartSeries} allSeries={series} measurements={filtered} selectedId={activeSelected} raw={chartMode === 'raw'}/>}
+              </div>
               <div className="chart-foot"><span>{chartMode === 'raw' ? 'Wartości w jednostkach wybranej serii' : 'Wartości jako % zakresu serii'} · czas UTC</span></div>
             </section>
             <aside className="panel signal-panel" id="series" aria-labelledby="series-heading">
@@ -331,6 +336,7 @@ function App() {
           />
           <footer className="footer"><span>RoverSense</span></footer>
           </>)}
+          </Suspense>
         </main>
       </div>
     </div>

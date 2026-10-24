@@ -1,5 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
-
 :root {
   font-family: 'DM Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
   color: #f2ece4;
@@ -66,12 +64,16 @@ a { color: inherit; text-decoration: none; }
 .range-tabs { display: flex; gap: 4px; border: 1px solid #3b484e; border-radius: 7px; padding: 3px; }
 .range-tabs button { min-height: 28px; border: 0; background: transparent; color: #abb8bb; padding: 4px 10px; border-radius: 5px; font: 700 10px 'Space Grotesk', sans-serif; }
 .range-tabs button[aria-pressed="true"] { background: #735039; color: #ffe2c5; }
-.series-toggles { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 22px 10px; }
+.series-toggles { display: flex; flex-wrap: wrap; gap: 8px; min-height: 45px; padding: 0 22px 10px; }
 .series-toggle { min-height: 35px; display: inline-flex; align-items: center; gap: 8px; color: #d5dfdb; background: #223036; border: 1px solid #47565b; padding: 7px 10px; border-radius: 6px; font-size: 10px; font-weight: 600; }
 .series-toggle[aria-pressed="false"] { color: #75888c; border-color: #334047; background: #1c272c; }
 .legend-dot { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 7px; }
 .series-toggle[aria-pressed="false"] .legend-dot { opacity: .3; }
 .chart-viewport { overflow-x: auto; padding: 0 16px 0 7px; }
+.chart-body { display: grid; min-width: 0; min-height: 215px; aspect-ratio: 880 / 275; }
+.chart-body > * { grid-area: 1 / 1; min-width: 0; }
+.chart-body > .loading-text { display: grid; place-content: center; margin: 0; }
+.chart-body .telemetry-chart { height: 100%; }
 .telemetry-chart { min-width: 570px; width: 100%; height: auto; display: block; }
 .grid-line { stroke: #344248; stroke-width: 1; stroke-dasharray: 4 6; }
 .grid-label { font: 11px 'Space Grotesk', sans-serif; fill: #adbdc0; }
@@ -210,7 +212,8 @@ a { color: inherit; text-decoration: none; }
   .panel-heading { padding: 0 0 5mm; }
   .panel-heading, .panel-heading h2, .panel-heading p, .eyebrow { color: #222 !important; }
   .chart-viewport { overflow: visible; }
-  .telemetry-chart { min-width: 0; max-width: 100%; width: 100%; height: auto; }
+  .chart-body { display: block; min-height: 0; aspect-ratio: auto; }
+  .chart-body .telemetry-chart { min-width: 0; max-width: 100%; width: 100%; height: auto; }
   .grid-label { fill: #333; }
   .grid-line { stroke: #aaa; }
   .print-report { display: block; color: #111; font: 10pt/1.4 Arial, sans-serif; }

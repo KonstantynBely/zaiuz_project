@@ -62,6 +62,8 @@ Do przetestowania panelu administratora lokalnie potrzebny jest **działający b
 
 Testy grupowania pomiarów dla dashboardu: `cd frontend && npm run test`. TypeScript i build: `npm run typecheck && npm run build`.
 
+Wydajność w Lighthouse należy sprawdzać na buildzie produkcyjnym: w katalogu `frontend` wykonaj `npm run build`, a następnie `npm run preview` i otwórz wyświetlony adres (domyślnie `http://127.0.0.1:4173`). Backend musi być dostępny dla proxy `/api`, tak jak podczas pracy z Vite DEV. Użyj profilu przeglądarki bez rozszerzeń. Wyniki `npm run dev` obejmują dodatkowy kod developerski i HMR, więc nie odzwierciedlają rozmiaru ani czasu uruchamiania produkcyjnej aplikacji.
+
 Interfejs nie udostępnia dodawania ani edytowania pojedynczych pomiarów. Wszystkie dane generator zapisuje przez API czujnika.
 
 ## Wydruk, dostępność i materiały do dokumentacji
