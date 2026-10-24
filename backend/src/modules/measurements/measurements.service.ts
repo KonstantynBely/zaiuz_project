@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { ApiError } from '../../common/errors.js';
-import { parseTimestamp } from '../../common/validation.js';
+import { isDatabaseId, parseTimestamp } from '../../common/validation.js';
 import type { MeasurementInput, MeasurementQuery } from './measurements.schema.js';
 import type { MeasurementRow, MeasurementsRepository } from './measurements.repository.js';
 
@@ -12,8 +12,14 @@ function expose(row:MeasurementRow) {
 
 /** Czas i numeryczne ID walidowane przed SQL — parametry są przekazywane osobno. */
 export function parseMeasurementQuery(query:MeasurementQuery) {
+  for (const name of ['series', 'from', 'to', 'sort', 'limit'] as const) {
+    if (query[name] !== undefined && typeof query[name] !== 'string') {
+      throw new ApiError(400, `Parametr ${name} musi wystąpić tylko raz i być tekstem`);
+    }
+  }
+  if (query.series === '') throw new ApiError(400, 'Lista serii nie może być pusta');
   const series = query.series ? query.series.split(',') : undefined;
-  if (series?.some(x=>!/^[1-9]\d*$/.test(x))) throw new ApiError(400,'Niepoprawna lista serii');
+  if (series?.some(x=>!isDatabaseId(x))) throw new ApiError(400,'Niepoprawna lista serii');
   const from = query.from===undefined?undefined:parseTimestamp(query.from);
   const to = query.to===undefined?undefined:parseTimestamp(query.to);
   if(from && to && from>to)throw new ApiError(400,'Parametr from nie może być późniejszy niż to');
@@ -34,7 +40,7 @@ export function createMeasurementsService(repo:MeasurementsRepository,onCreated?
     },
     async create(key:string|undefined,input:MeasurementInput) {
       if(!key || key.length<32)throw new ApiError(401,'Nieprawidłowy klucz czujnika');
-      const timestamp=input.timestamp ? parseTimestamp(input.timestamp) : new Date();
+      const timestamp=input.timestamp === undefined ? new Date() : parseTimestamp(input.timestamp);
       const hashed=createHash('sha256').update(key).digest('hex');
       const result=await repo.insertWithKey(hashed,input.value,timestamp);
       if('row' in result){const measurement=expose(result.row);onCreated?.(measurement);return measurement;}

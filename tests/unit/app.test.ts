@@ -43,3 +43,21 @@ test('DATABASE_URL musi być PostgreSQL', () => {
   assert.equal(getConfig({ PORT: '3001' }).port, 3001);
   assert.throws(() => getConfig({ PORT: '99999' }), /PORT/);
 });
+
+test('Błędne publiczne identyfikatory i filtry zwracają 4xx przed zapytaniem SQL', async () => {
+  let queries = 0;
+  const app = buildApp({ pool: { query: async () => { queries++; return { rows: [] }; } } as never });
+  try {
+    for (const [url, status] of [
+      ['/api/series/9223372036854775808', 404],
+      ['/api/measurements/9223372036854775808', 404],
+      ['/api/measurements?series=9223372036854775808', 400],
+      ['/api/measurements?series=1&series=2', 400],
+      ['/api/measurements?from=2026-02-30T10:00:00Z', 400],
+    ] as const) {
+      const response = await app.inject({ method: 'GET', url });
+      assert.equal(response.statusCode, status, response.body);
+    }
+    assert.equal(queries, 0);
+  } finally { await app.close(); }
+});

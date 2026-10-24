@@ -2,6 +2,7 @@ import { randomBytes, createHash } from 'node:crypto';
 import { ApiError } from '../../common/errors.js';
 import type { SensorsRepository, SensorRow } from './sensors.repository.js';
 import type { SensorInput } from './sensors.schema.js';
+import { parseId } from '../../common/validation.js';
 
 export const keyHash = (key:string) => createHash('sha256').update(key).digest('hex');
 export function toSensor(row:SensorRow) {
@@ -19,9 +20,13 @@ export function createSensorsService(repo: SensorsRepository) {
       if (!sensor) throw new ApiError(404,'Nie znaleziono czujnika');
       return toSensor(sensor);
     },
-    async register(body: SensorInput) {
+    async register(body: SensorInput, simulationWorker = false) {
+      if (typeof body.seriesId === 'number' && !Number.isSafeInteger(body.seriesId)) {
+        throw new ApiError(422, 'Niepoprawny identyfikator serii');
+      }
+      const seriesId = parseId(String(body.seriesId), 422);
       const apiKey = randomBytes(32).toString('hex');
-      const row = await repo.register({name:body.name,seriesId:String(body.seriesId),keyHash:keyHash(apiKey)});
+      const row = await repo.register({name:body.name,seriesId,keyHash:keyHash(apiKey),simulationWorker});
       if (!row) throw new ApiError(422,'Seria przypisana do czujnika nie istnieje');
       return { ...toSensor(row), apiKey };
     },

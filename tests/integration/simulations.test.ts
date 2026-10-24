@@ -4,6 +4,9 @@ import { hashPassword } from '../../backend/src/modules/auth/auth.service.js';
 import { createPool } from '../../backend/src/database/pool.js';
 import { buildApp } from '../../backend/src/app.js';
 import { ApiError } from '../../backend/src/common/errors.js';
+import { createSensorsRepository } from '../../backend/src/modules/sensors/sensors.repository.js';
+import { createSimulationsRepository } from '../../backend/src/modules/simulations/simulations.repository.js';
+import { keyHash } from '../../backend/src/modules/sensors/sensors.service.js';
 
 test('Symulacja przez REST tworzy dedykowany sensor, przesyła i zachowuje wyniki',async()=>{
   const pool=createPool();
@@ -230,6 +233,28 @@ test('Symulacja przez REST tworzy dedykowany sensor, przesyła i zachowuje wynik
     assert.ok(restCalls.register>=12,'Symulacje muszą rejestrować sensor przez HTTP REST');
     assert.equal(restCalls.revoke,restCalls.register,
       'Każdy sensor symulacji musi zostać wyrejestrowany przez HTTP REST');
+
+    // Recovery must cover failed runs and crashes between sensor registration
+    // and run creation, without touching manually registered devices or readings.
+    const sensorsRepo = createSensorsRepository(pool);
+    const runsRepo = createSimulationsRepository(pool);
+    const manual = await sensorsRepo.register({ name:'Manual recovery control', seriesId:seriesId!, keyHash:keyHash(name + '-manual') });
+    const orphan = await sensorsRepo.register({ name:'Worker without run', seriesId:seriesId!, keyHash:keyHash(name + '-orphan'), simulationWorker:true });
+    const failedSensor = await sensorsRepo.register({ name:'Failed cleanup', seriesId:seriesId!, keyHash:keyHash(name + '-failed'), simulationWorker:true });
+    const failedRun = await runsRepo.create(seriesId!, failedSensor!.id, {
+      mode:'history', pattern:'random', count:1, intervalMs:200, min:0, max:10,
+    });
+    await runsRepo.changeState(failedRun.id, 'failed', 'Cleanup failed');
+    const beforeRecovery = await pool.query('SELECT COUNT(*)::int AS n FROM measurements WHERE series_id=$1', [seriesId]);
+    await runsRepo.recoverOrphans();
+    assert.equal(await sensorsRepo.findById(orphan!.id), null);
+    assert.equal(await sensorsRepo.findById(failedSensor!.id), null);
+    assert.ok(await sensorsRepo.findById(manual!.id));
+    assert.equal((await runsRepo.get(failedRun.id))!.state, 'failed');
+    assert.equal((await pool.query('SELECT COUNT(*)::int AS n FROM measurements WHERE series_id=$1', [seriesId])).rows[0].n,
+      beforeRecovery.rows[0].n);
+    const queued = await pool.query('SELECT sensor_id FROM simulation_sensor_cleanup WHERE sensor_id=ANY($1::bigint[])', [[orphan!.id, failedSensor!.id]]);
+    assert.equal(queued.rowCount, 0);
 
 
   } finally {

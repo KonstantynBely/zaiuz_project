@@ -53,10 +53,12 @@ async function request<T>(path: string, options: {
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
   token?: string;
   body?: object;
+  signal?: AbortSignal;
 } = {}): Promise<T> {
   const response = await fetch(path, {
     method: options.method ?? 'GET',
     cache: 'no-store',
+    signal: options.signal,
     headers: {
       Accept: 'application/json',
       ...(options.body ? { 'Content-Type': 'application/json' } : {}),
@@ -84,7 +86,7 @@ export const adminApi = {
     request<void>('/api/auth/logout', { method: 'POST', token }),
   changePassword: (token: string, currentPassword: string, newPassword: string) =>
     request<void>('/api/auth/password', { method: 'PUT', token, body: { currentPassword, newPassword } }),
-  listSeries: () => request<Series[]>('/api/series'),
+  listSeries: (signal?: AbortSignal) => request<Series[]>('/api/series', { signal }),
   createSeries: (token: string, input: SeriesInput) =>
     request<Series>('/api/series', { method: 'POST', token, body: input }),
   updateSeries: (token: string, id: string, input: SeriesInput) =>
@@ -97,8 +99,8 @@ export const adminApi = {
     request<CreatedSensor>('/api/sensors', { method: 'POST', token, body: { name, seriesId } }),
   deleteSensor: (token: string, id: string) =>
     request<void>('/api/sensors/' + encodeURIComponent(id), { method: 'DELETE', token }),
-  listSimulations: (token: string) =>
-    request<Simulation[]>('/api/simulations', { token }),
+  listSimulations: (token: string, signal?: AbortSignal) =>
+    request<Simulation[]>('/api/simulations', { token, signal }),
   startSimulation: (token: string, input: SimulationInput) =>
     request<Simulation>('/api/simulations', { token, method: 'POST', body: input }),
   stopSimulation: (token: string, id: string) =>

@@ -1,6 +1,6 @@
 # RoverSense — model danych i diagram ERD
 
-Diagram odpowiada migracji database/migrations/001_initial.sql w PostgreSQL 17 z rozszerzeniem TimescaleDB. Tabela measurements jest hypertable dzieloną według timestamp.
+Diagram odpowiada migracjom `database/migrations/001_initial.sql` i `002_simulation_sensor_cleanup.sql` w PostgreSQL 17 z rozszerzeniem TimescaleDB. Tabela measurements jest hypertable dzieloną według timestamp.
 
 ```mermaid
 erDiagram
@@ -11,6 +11,7 @@ erDiagram
     series ||--o{ simulation_runs : "uruchamia"
     sensors |o--o{ simulation_runs : "sensor_symulacji"
     sensors |o--o{ rejected_measurements : "odrzucenia"
+    sensors ||--o| simulation_sensor_cleanup : "oczekuje_na_sprzatanie"
 
     admins {
         bigint id PK
@@ -67,16 +68,27 @@ erDiagram
         text reason
         int http_status
     }
+    simulation_sensor_cleanup {
+        bigint sensor_id PK, FK
+        boolean ready
+    }
 ```
 
 ## Relacje i integralność
 
 - Usunięcie serii usuwa powiązane czujniki, pomiary i uruchomienia symulatorów (FK ON DELETE CASCADE).
-- Usunięcie sensora ustawia sensor_id na NULL w zależnych tabelach (ON DELETE SET NULL). **Wyrejestrowanie** sensora nie usuwa jego rekordu — ustawia revoked_at, a dotychczasowe pomiary pozostają.
+- Usunięcie sensora ustawia sensor_id na NULL w measurements, simulation_runs i rejected_measurements (ON DELETE SET NULL), a jego wpis w simulation_sensor_cleanup usuwa kaskadowo (ON DELETE CASCADE). **Wyrejestrowanie** sensora nie usuwa jego rekordu — ustawia revoked_at, usuwa wpis kolejki sprzątania, a dotychczasowe pomiary pozostają.
+- simulation_sensor_cleanup ma najwyżej jeden wpis na czujnik: sensor_id jest jednocześnie kluczem głównym i obcym. Nie przechowuje klucza API.
 - Tokeny dostępu są powiązane z kontem administratora i usuwane wraz z nim.
 - Klucz główny measurements obejmuje **(timestamp, id)** z powodu wymagań hypertable; osobny indeks przyspiesza odczyt po id.
 - Indeks measurements_series_time_idx przyspiesza filtrowanie serii i czasu. Ograniczenie CHECK (min_value < max_value) dotyczy serii, a zakres pomiaru jest walidowany transakcyjnie przez backend.
 - password_hash, api_key_hash i token_hash przechowują skróty, nigdy jawne hasła czy klucze.
+
+## Sprzątanie czujników symulacji
+
+Wpis simulation_sensor_cleanup powstaje w tej samej transakcji co rejestracja czujnika przez lokalnego workera, jeszcze przed utworzeniem simulation_runs. Dzięki temu kolejka obejmuje również czujniki, dla których zapis uruchomienia symulacji się nie powiódł. Ręcznie rejestrowane czujniki nie trafiają do kolejki.
+
+Pole ready ma domyślnie wartość false; przed próbą wyrejestrowania jest ustawiane na true. Nieudane operacje są ponawiane przez REST. Ponawianie obejmuje także wpisy powiązane z zakończonymi zadaniami, nawet gdy ustawienie ready się nie powiodło. Udane wyrejestrowanie usuwa wpis kolejki w tej samej transakcji, w której unieważnia klucz czujnika. Przy starcie backend unieważnia klucze wszystkich czujników pozostałych w kolejce i opróżnia ją przed przyjmowaniem żądań.
 
 ## Ścieżka pomiaru
 

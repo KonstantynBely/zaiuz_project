@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import '../../styles/admin.css';
+import { createSimulationMonitor } from './simulationMonitor';
 import type { Series } from '../../api/client';
 import { adminApi, ApiRequestError, type Simulation, type SimulationInput, type SimulationState } from '../../api/admin';
 
@@ -17,7 +19,7 @@ const stateLabels: Record<SimulationState, string> = {
 const dateLabel = (date: string | null) => date ? new Date(date).toLocaleString('pl-PL', { dateStyle: 'short', timeStyle: 'medium' }) : '—';
 const describe = (error: unknown) => {
   if (error instanceof ApiRequestError) return error.message;
-  return 'Nie udało się połączyć z API.';
+  return 'Nie udało się połączyć z serwerem.';
 };
 
 export function SimulationPanel({ token, onUnauthorized, onMeasurementsChanged, onOpenDashboard }: Props) {
@@ -29,42 +31,57 @@ export function SimulationPanel({ token, onUnauthorized, onMeasurementsChanged, 
   const [pattern, setPattern] = useState<'random' | 'sine' | 'observed'>('random');
   const [station, setStation] = useState<'EPWA' | 'EPKK' | 'EPGD'>('EPWA');
   const [count, setCount] = useState('30');
-  const [intervalMs, setIntervalMs] = useState('1000');
+  const [intervalSeconds, setIntervalSeconds] = useState('1');
   const [minimum, setMinimum] = useState('');
   const [maximum, setMaximum] = useState('');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [pollError, setPollError] = useState('');
+  const [seriesError, setSeriesError] = useState('');
+  const pollerRef = useRef<ReturnType<typeof createSimulationMonitor> | null>(null);
+  const sessionEpoch = useRef(0);
   const [notice, setNotice] = useState('');
-  const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
 
   const selectedSeries = useMemo(() => series.find(item => String(item.id) === seriesId), [series, seriesId]);
   const activeRuns = useMemo(() => runs.filter(run => runningStates.includes(run.state)), [runs]);
 
-  const load = useCallback(async (includeSeries: boolean, showLoading: boolean) => {
-    if (showLoading) setLoading(true);
-    try {
-      const [loadedSeries, loadedRuns] = await Promise.all([
-        includeSeries ? adminApi.listSeries() : Promise.resolve(null),
-        adminApi.listSimulations(token),
-      ]);
-      if (loadedSeries) setSeries(loadedSeries);
-      setRuns(loadedRuns);
-      setLastRefresh(new Date());
-    } catch (reason) {
-      if (reason instanceof ApiRequestError && reason.status === 401) { onUnauthorized(); return; }
-      setError(describe(reason));
-    } finally {
-      if (showLoading) setLoading(false);
-    }
-  }, [token, onUnauthorized]);
-
   useEffect(() => {
-    void load(true, true);
-    // Wersja REST pollingu pokazuje status i liczniki również bez SSE.
-    const timer = window.setInterval(() => { void load(false, false); }, 2500);
-    return () => window.clearInterval(timer);
-  }, [load]);
+    let active = true;
+    const epoch = ++sessionEpoch.current;
+    setLoading(true);
+    setSeriesError('');
+    setPollError('');
+    const reportError = (reason: unknown | null, update: (message: string) => void) => {
+      if (!active || sessionEpoch.current !== epoch) return;
+      if (reason instanceof ApiRequestError && reason.status === 401) onUnauthorized();
+      else update(reason === null ? '' : describe(reason));
+    };
+    const poller = createSimulationMonitor({
+      loadSeries: signal => adminApi.listSeries(signal),
+      loadRuns: signal => adminApi.listSimulations(token, signal),
+      onSeries: items => {
+        if (!active || sessionEpoch.current !== epoch) return;
+        setSeries(items);
+        setLoading(false);
+      },
+      onRuns: items => {
+        if (active && sessionEpoch.current === epoch) setRuns(items);
+      },
+      onSeriesError: reason => {
+        reportError(reason, setSeriesError);
+        if (active && sessionEpoch.current === epoch) setLoading(false);
+      },
+      onRunsError: reason => reportError(reason, setPollError),
+    });
+    pollerRef.current = poller;
+    return () => {
+      active = false;
+      ++sessionEpoch.current;
+      poller.stop();
+      if (pollerRef.current === poller) pollerRef.current = null;
+    };
+  }, [token, onUnauthorized]);
 
   function chooseSeries(id: string) {
     setSeriesId(id);
@@ -78,7 +95,7 @@ export function SimulationPanel({ token, onUnauthorized, onMeasurementsChanged, 
     const min = Number(minimum);
     const max = Number(maximum);
     const parsedCount = Number(count);
-    const parsedInterval = Number(intervalMs);
+    const parsedInterval = Number(intervalSeconds) * 1000;
     if (!selectedSeries) { setError('Wybierz istniejącą serię.'); return; }
     if (pattern === 'observed' && !['°C', 'C'].includes(selectedSeries.unit ?? '')) {
       setError('Dla rzeczywistych temperatur METAR wybierz serię z jednostką °C.');
@@ -91,7 +108,7 @@ export function SimulationPanel({ token, onUnauthorized, onMeasurementsChanged, 
     }
     if ((pattern !== 'observed' && (!Number.isInteger(parsedCount) || parsedCount < 1 || parsedCount > 1000)) ||
       !Number.isInteger(parsedInterval) || parsedInterval < 200 || parsedInterval > 60000) {
-      setError('Liczba pomiarów: 1–1000. Interwał: 200–60000 ms.');
+      setError('Podaj od 1 do 1000 pomiarów i odstęp od 0,2 do 60 sekund.');
       return;
     }
     const input: SimulationInput = {
@@ -99,47 +116,60 @@ export function SimulationPanel({ token, onUnauthorized, onMeasurementsChanged, 
       ...(pattern === 'observed' ? { station } : { count: parsedCount, min, max }),
       ...(name.trim() ? { name: name.trim() } : {}),
     };
+    const epoch = sessionEpoch.current;
+    pollerRef.current?.invalidate();
     setBusy(true); setError(''); setNotice('');
     try {
       const run = await adminApi.startSimulation(token, input);
+      if (sessionEpoch.current !== epoch) return;
       setRuns(previous => [run, ...previous.filter(item => item.id !== run.id)]);
       setNotice(pattern === 'observed'
-        ? 'Pobrano rzeczywiste obserwacje i uruchomiono ich odtwarzanie. Źródło: Aviation Weather Center (METAR).'
-        : 'Uruchomiono symulację. Możesz uruchomić kolejną, maksymalnie cztery jednocześnie.');
-      void load(false, false);
+        ? 'Uruchomiono odtwarzanie obserwacji METAR (Aviation Weather Center).'
+        : 'Uruchomiono symulację.');
+      pollerRef.current?.refresh();
     } catch (reason) {
+      if (sessionEpoch.current !== epoch) return;
       if (reason instanceof ApiRequestError && reason.status === 401) onUnauthorized();
       else setError(describe(reason));
-    } finally { setBusy(false); }
+      pollerRef.current?.refresh();
+    } finally {
+      if (sessionEpoch.current === epoch) setBusy(false);
+    }
   }
 
   async function stop(id: string) {
+    const epoch = sessionEpoch.current;
+    pollerRef.current?.invalidate();
     setBusy(true); setError(''); setNotice('');
     try {
       const run = await adminApi.stopSimulation(token, id);
+      if (sessionEpoch.current !== epoch) return;
       setRuns(previous => previous.map(item => item.id === run.id ? run : item));
-      setNotice('Zatrzymano symulację. Zapisane wcześniej pomiary pozostały w bazie.');
+      setNotice('Zatrzymano symulację. Zapisane pomiary pozostały w historii.');
       onMeasurementsChanged();
-      void load(false, false);
+      pollerRef.current?.refresh();
     } catch (reason) {
+      if (sessionEpoch.current !== epoch) return;
       if (reason instanceof ApiRequestError && reason.status === 401) onUnauthorized();
       else setError(describe(reason));
-    } finally { setBusy(false); }
+      pollerRef.current?.refresh();
+    } finally {
+      if (sessionEpoch.current === epoch) setBusy(false);
+    }
   }
 
   return <div className="admin-view simulation-view">
     <div className="admin-heading">
-      <p className="eyebrow">MISSION CONTROL / TRANSMISJA</p>
-      <h1>Symulatory czujników</h1>
-      <p>Uruchamiaj źródła danych w backendzie. Każda symulacja automatycznie rejestruje swój czujnik i przekazuje pomiary przez REST API.</p>
+      <h1>Symulatory</h1>
+      <p>Uruchamiaj i zatrzymuj symulacje pomiarów.</p>
     </div>
+    {seriesError && <p role="alert" className="form-message error">{seriesError} Lista serii zostanie pobrana ponownie automatycznie.</p>}
+    {pollError && <p role="status" className="form-message error">{pollError}</p>}
     {error && <p role="alert" className="form-message error">{error}</p>}
     {notice && <p role="status" className="form-message success">{notice}</p>}
     <div className="sim-layout">
       <section className="admin-card sim-configuration" aria-labelledby="simulation-form-heading">
-        <span className="admin-card-kicker">PARAMETRY MISJI</span>
         <h2 id="simulation-form-heading">Nowa symulacja</h2>
-        <p className="admin-description">Do czterech aktywnych symulacji jednocześnie, każda z własnym sensorem i kluczem przechowywanym na serwerze.</p>
         <form className="admin-form" onSubmit={start}>
           <label htmlFor="sim-series">Seria pomiarowa</label>
           <select id="sim-series" required value={seriesId} onChange={event => chooseSeries(event.target.value)} disabled={busy}>
@@ -150,9 +180,9 @@ export function SimulationPanel({ token, onUnauthorized, onMeasurementsChanged, 
           <label htmlFor="sim-name">Nazwa czujnika (opcjonalna)</label>
           <input id="sim-name" maxLength={100} value={name} onChange={event => setName(event.target.value)} disabled={busy} placeholder="Np. czujnik temperatury"/>
           <div className="admin-field-grid">
-            <div><label htmlFor="sim-mode">Tryb transmisji</label>
+            <div><label htmlFor="sim-mode">Sposób odtwarzania</label>
               <select id="sim-mode" value={mode} onChange={event => setMode(event.target.value as 'history' | 'live')} disabled={busy}>
-                <option value="live">Live — wysyłka w odstępach</option><option value="history">Historyczny — import serii</option>
+                <option value="live">Na żywo</option><option value="history">Historycznie</option>
               </select></div>
             <div><label htmlFor="sim-pattern">Źródło danych</label>
               <select id="sim-pattern" value={pattern} onChange={event => {
@@ -172,7 +202,7 @@ export function SimulationPanel({ token, onUnauthorized, onMeasurementsChanged, 
               <option value="EPKK">Kraków-Balice (EPKK)</option>
               <option value="EPGD">Gdańsk (EPGD)</option>
             </select>
-            <p className="admin-helper">Rzeczywiste odczyty temperatury (°C) z ostatnich 24 godzin, źródło: Aviation Weather Center / METAR. Liczba pomiarów wynika z dostępnych obserwacji, bez uzupełniania braków. Tryb historyczny zachowuje czas obserwacji, a live wysyła oryginalne wartości z aktualną datą transmisji.</p>
+            <p className="admin-helper">Temperatury z ostatnich 24 godzin, źródło: Aviation Weather Center (METAR). W trybie historycznym zachowywana jest data obserwacji, a na żywo — bieżący czas odtwarzania.</p>
           </>}
           {pattern !== 'observed' && <div className="admin-field-grid">
             <div><label htmlFor="sim-min">Minimum wartości</label><input id="sim-min" type="number" step="any" value={minimum} onChange={event => setMinimum(event.target.value)} required disabled={busy}/></div>
@@ -180,9 +210,9 @@ export function SimulationPanel({ token, onUnauthorized, onMeasurementsChanged, 
           </div>}
           <div className="admin-field-grid">
             {pattern !== 'observed' && <div><label htmlFor="sim-count">Liczba pomiarów</label><input id="sim-count" type="number" min={1} max={1000} step={1} required value={count} onChange={event => setCount(event.target.value)} disabled={busy}/></div>}
-            <div><label htmlFor="sim-interval">Interwał (ms)</label><input id="sim-interval" type="number" min={200} max={60000} step={1} required value={intervalMs} onChange={event => setIntervalMs(event.target.value)} disabled={busy}/></div>
+            <div><label htmlFor="sim-interval">Odstęp między pomiarami (s)</label><input id="sim-interval" type="number" min={0.2} max={60} step={0.1} required value={intervalSeconds} onChange={event => setIntervalSeconds(event.target.value)} disabled={busy}/></div>
           </div>
-          {pattern !== 'observed' && <p className="admin-helper">{mode === 'history' ? 'Historia: próbki wysyłane bez przerw, z datami wyliczonymi z interwału.' : 'Live: kolejne próbki wysyłane w zadanych odstępach, z bieżącą datą.'}</p>}
+          {pattern !== 'observed' && <p className="admin-helper">{mode === 'history' ? 'Pomiary otrzymają historyczne daty i zostaną wysłane bez oczekiwania.' : 'Pomiary będą wysyłane w wybranych odstępach.'}</p>}
           <button type="submit" className="admin-primary" disabled={busy || loading || activeRuns.length >= 4 || !series.length}>{busy ? 'Trwa uruchamianie…' : activeRuns.length >= 4 ? 'Osiągnięto limit 4 symulacji' : '▶ Rozpocznij symulację'}</button>
         </form>
       </section>
@@ -190,10 +220,10 @@ export function SimulationPanel({ token, onUnauthorized, onMeasurementsChanged, 
       <div className="admin-stack">
         <section className="admin-card sim-status" aria-labelledby="current-sim-heading">
           <div className="admin-card-head">
-            <div><span className="admin-card-kicker">TELEMETRIA / STATUS</span><h2 id="current-sim-heading">Aktywne symulacje</h2></div>
+            <h2 id="current-sim-heading">Aktywne symulacje</h2>
             <span className="admin-counter">{activeRuns.length} / 4</span>
           </div>
-          {activeRuns.length === 0 && <p className="admin-empty">Brak aktywnych symulacji. Możesz uruchomić do czterech jednocześnie.</p>}
+          {activeRuns.length === 0 && <p className="admin-empty">Brak aktywnych symulacji.</p>}
           <div className="sim-history-list">
             {activeRuns.map(run => <div key={run.id} className="sim-active-card">
               <div className="admin-card-head">
@@ -211,16 +241,15 @@ export function SimulationPanel({ token, onUnauthorized, onMeasurementsChanged, 
               </div>
             </div>)}
           </div>
-          <p className="sim-refresh">Status odświeżany co 2,5 s{lastRefresh ? ' · ' + lastRefresh.toLocaleTimeString('pl-PL') : ''}</p>
         </section>
         <section className="admin-card" aria-labelledby="history-sim-heading">
-          <div className="admin-card-head"><div><span className="admin-card-kicker">ARCHIWUM MISJI</span><h2 id="history-sim-heading">Ostatnie uruchomienia</h2></div><span className="admin-counter">{runs.length}</span></div>
+          <div className="admin-card-head"><h2 id="history-sim-heading">Historia symulacji</h2><span className="admin-counter">{runs.length}</span></div>
           {loading && <p className="loading-text" role="status">Ładowanie symulacji…</p>}
           {!loading && runs.length === 0 && <p className="admin-empty">Nie uruchomiono jeszcze żadnej symulacji.</p>}
           <div className="sim-history-list">
             {runs.slice(0, 8).map(run => <div className="sim-history-row" key={run.id}>
               <div><strong>Symulacja #{run.id}</strong><span>{series.find(s => String(s.id) === String(run.seriesId))?.name || 'Seria ' + run.seriesId} · {dateLabel(run.startedAt)}{run.parameters.pattern === 'observed' ? ' · AWC METAR ' + (run.parameters.station ?? '') : ''}</span></div>
-              <div><span className={'sim-state ' + (runningStates.includes(run.state) ? 'sim-running' : run.state === 'failed' ? 'sim-failed' : '')}>{stateLabels[run.state]}</span><small>{run.acceptedCount} OK / {run.rejectedCount} błędów</small></div>
+              <div><span className={'sim-state ' + (runningStates.includes(run.state) ? 'sim-running' : run.state === 'failed' ? 'sim-failed' : '')}>{stateLabels[run.state]}</span><small>Przyjęte: {run.acceptedCount} · Odrzucone: {run.rejectedCount}</small></div>
               {run.error && <p className="sim-error-text">{run.error}</p>}
             </div>)}
           </div>

@@ -17,9 +17,16 @@ export function createAuthRepository(pool: Pool) {
          WHERE t.token_hash=$1 AND t.revoked_at IS NULL AND t.expires_at > now()`, [tokenHash]);
       return rows.rows[0] ?? null;
     },
-    async storeToken(adminId: string, tokenHash: string, expiresAt: Date): Promise<void> {
-      await pool.query('INSERT INTO access_tokens(token_hash,admin_id,expires_at) VALUES($1,$2,$3)',
-        [tokenHash, adminId, expiresAt]);
+    async storeToken(adminId: string, expectedHash: string, tokenHash: string, expiresAt: Date): Promise<boolean> {
+      return transaction(pool, async client => {
+        // Password changes lock this same row until all old sessions are revoked.
+        const current = await client.query<{ password_hash: string }>(
+          'SELECT password_hash FROM admins WHERE id=$1 FOR UPDATE', [adminId]);
+        if (current.rows[0]?.password_hash !== expectedHash) return false;
+        await client.query('INSERT INTO access_tokens(token_hash,admin_id,expires_at) VALUES($1,$2,$3)',
+          [tokenHash, adminId, expiresAt]);
+        return true;
+      });
     },
     async revokeToken(tokenHash: string): Promise<void> {
       await pool.query('UPDATE access_tokens SET revoked_at=now() WHERE token_hash=$1 AND revoked_at IS NULL', [tokenHash]);
