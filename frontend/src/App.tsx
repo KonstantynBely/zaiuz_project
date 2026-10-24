@@ -1,23 +1,23 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { fetchHealth, fetchMeasurements, fetchSeries, type Measurement, type Series } from './api/client';
+import type { Measurement, Series } from './api/client';
 import roverHero from './assets/rover-hero.svg';
 import { adminApi } from './api/admin';
 import { AdminPanel, type AdminView } from './features/admin/AdminPanel';
+import { Icon } from './components/Icon';
+import { Sidebar } from './components/Sidebar';
 import { SimulationPanel } from './features/admin/SimulationPanel';
-import { groupMeasurements } from './features/dashboard/measurementRows';
-import { appendStreamMeasurement, type StreamFilter } from './features/dashboard/measurementStream';
+import { TelemetryChart } from './features/dashboard/TelemetryChart';
+import { MeasurementHistory } from './features/dashboard/MeasurementHistory';
+import { formatDate, formatShortTime, formatValue } from './features/dashboard/formatting';
+import { useTelemetry } from './features/dashboard/useTelemetry';
 import './styles/app.css';
 
-type LoadState = 'loading' | 'ready' | 'error';
 type TimeRange = 'all' | '24h' | '7d' | '30d' | 'custom';
-type IconName = 'dashboard' | 'chart' | 'layers' | 'radio' | 'clock' | 'settings' | 'refresh' | 'arrow' | 'menu' | 'activity' | 'database' | 'planet' | 'signal' | 'print' | 'lock' | 'logout';
 
 const timeRanges: { value: TimeRange; label: string }[] = [
   { value: 'all', label: 'Całość' }, { value: '24h', label: '24 h' },
   { value: '7d', label: '7 dni' }, { value: '30d', label: '30 dni' },
 ];
-
-const DASH_PATTERNS = ['none', '9 5', '3 4', '13 4 3 4'] as const;
 
 const previewSeries: Series[] = [
   { id: 'demo-1', name: 'Temperatura modułu', minValue: -30, maxValue: 60, unit: '°C', color: '#e7a679' },
@@ -48,132 +48,23 @@ function createPreviewMeasurements(): Measurement[] {
 
 const previewMeasurements = createPreviewMeasurements();
 
-function Icon({ name, size = 18 }: { name: IconName; size?: number }) {
-  const paths: Record<IconName, React.ReactNode> = {
-    dashboard: <><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="5" rx="1.5"/><rect x="13" y="10" width="8" height="11" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/></>,
-    chart: <><path d="M3 20V4M3 20h18"/><path d="m6 15 4-5 4 3 6-8"/></>,
-    layers: <><path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 12 9 5 9-5M3 16l9 5 9-5"/></>,
-    radio: <><circle cx="12" cy="12" r="2"/><path d="M7 7a7 7 0 0 0 0 10m10-10a7 7 0 0 1 0 10M4 4a11 11 0 0 0 0 16m16-16a11 11 0 0 1 0 16"/></>,
-    clock: <><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></>,
-    settings: <><circle cx="12" cy="12" r="3"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3M5 5l2 2m10 10 2 2M19 5l-2 2M7 17l-2 2"/></>,
-    refresh: <><path d="M20 7v5h-5M4 17v-5h5"/><path d="M5.6 9a7 7 0 0 1 12-3L20 12M4 12l2.4 6a7 7 0 0 0 12-3"/></>,
-    arrow: <><path d="M4 12h16m-6-6 6 6-6 6"/></>,
-    menu: <><path d="M4 6h16M4 12h16M4 18h16"/></>,
-    activity: <><path d="M2 12h5l3-8 4 16 3-8h5"/></>,
-    database: <><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 4 16 4 16 0V5M4 12c0 4 16 4 16 0"/></>,
-    planet: <><circle cx="12" cy="12" r="6"/><path d="M2 15c3 3 17 1 20-6"/></>,
-    signal: <><path d="M3 19v-3m6 3v-7m6 7V8m6 11V4"/></>,
-    print: <><path d="M6 9V3h12v6M6 17H4V9h16v8h-2M6 14h12v7H6z"/></>,
-    logout: <><path d="M9 4H4v16h5M10 12h11m-4-4 4 4-4 4"/></>,
-    lock: <><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3"/></>,
-  };
-  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]}</svg>;
-}
-
-function formatDate(value: string) {
-  const time = new Date(value);
-  return Number.isNaN(time.valueOf()) ? '—' :
-    new Intl.DateTimeFormat('pl-PL', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }).format(time) + ' UTC';
-}
-function formatShortTime(value: string) {
-  const time = new Date(value);
-  return new Intl.DateTimeFormat('pl-PL', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }).format(time);
-}
-function formatValue(value: number) {
-  return new Intl.NumberFormat('pl-PL', { maximumFractionDigits: 2 }).format(value);
-}
 function scrollToSection(id: string) {
   document.getElementById(id)?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
 }
 
-interface ChartPoint {
-  id: string;
-  x: number;
-  y: number;
-  value: number;
-  timestamp: string;
-}
-
-/** Wspólny wykres w % zakresów lub rzeczywiste wartości jednej wybranej serii. */
-function TelemetryChart({ series, allSeries, measurements, selectedId, raw }: {
-  series: Series[]; allSeries: Series[]; measurements: Measurement[]; selectedId: string | null; raw: boolean;
-}) {
-  const width = 880, height = 275;
-  const left = 60, right = 20, top = 21, bottom = 36;
-  const values = measurements.filter(measurement => series.some(s => String(s.id) === String(measurement.seriesId)));
-  if (values.length === 0) {
-    return <div className="empty-chart"><Icon name="activity" size={27}/><strong>Brak pomiarów w wybranym zakresie</strong><span>Wybierz inne serie lub przedział czasu.</span></div>;
-  }
-  const stamps = values.map(p => new Date(p.timestamp).valueOf()).filter(Number.isFinite);
-  const minTime = Math.min(...stamps);
-  const maxTime = Math.max(...stamps);
-  const span = Math.max(1, maxTime - minTime);
-  const plotW = width - left - right, plotH = height - top - bottom;
-  const pointSets: { series: Series; points: ChartPoint[] }[] = series.map(item => ({
-    series: item,
-    points: values
-      .filter(p => String(p.seriesId) === String(item.id))
-      .map(p => ({
-        id: String(p.id), value: p.value, timestamp: p.timestamp,
-        x: left + (new Date(p.timestamp).valueOf() - minTime) / span * plotW,
-        y: top + (1 - Math.min(1, Math.max(0, (p.value - item.minValue) / (item.maxValue - item.minValue)))) * plotH,
-      }))
-      .sort((a, b) => a.x - b.x),
-  }));
-  const active = pointSets.flatMap(group => group.points).find(point => point.id === selectedId);
-  const labelFor = (part: number) => {
-    const date = new Date(minTime + part * span);
-    return new Intl.DateTimeFormat('pl-PL', span >= 86_400_000 ? { month: '2-digit', day: '2-digit', timeZone: 'UTC' } : { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }).format(date);
-  };
-  const valueLabel = (part: number) => raw && series[0] ?
-    formatValue(series[0].maxValue - part * (series[0].maxValue - series[0].minValue)) : Math.round((1 - part) * 100) + '%';
-  return (
-    <div className="chart-viewport">
-      <svg className="telemetry-chart" viewBox={'0 0 ' + width + ' ' + height} role="img" aria-label={raw ? 'Wykres wartości rzeczywistych wybranej serii. Szczegółowe pomiary znajdują się w tabeli.' : 'Wykres procentowych wartości względem zakresu każdej serii. Szczegóły w tabeli.'}>
-        {[0, .25, .5, .75, 1].map(part => {
-          const y = top + part * plotH;
-          return <g key={part}><line className="grid-line" x1={left} y1={y} x2={width - right} y2={y}/><text className="grid-label" x={left - 10} y={y + 4} textAnchor="end">{valueLabel(part)}</text></g>;
-        })}
-        {[0, .25, .5, .75, 1].map(part => {
-          const x = left + part * plotW;
-          return <text key={part} className="grid-label" x={x} y={height - 8} textAnchor={part === 0 ? 'start' : part === 1 ? 'end' : 'middle'}>{labelFor(part)}</text>;
-        })}
-        {active && <line className="chart-cross" x1={active.x} x2={active.x} y1={top} y2={top + plotH}/>}
-        {pointSets.map(group => (
-          <g key={String(group.series.id)}>
-            {group.points.length > 1 && <path d={group.points.map((point, i) => (i === 0 ? 'M' : 'L') + point.x.toFixed(2) + ',' + point.y.toFixed(2)).join(' ')} fill="none" stroke={group.series.color} strokeWidth="2.5" strokeDasharray={DASH_PATTERNS[Math.max(0, allSeries.findIndex(item => String(item.id) === String(group.series.id))) % DASH_PATTERNS.length]} strokeLinecap="round" strokeLinejoin="round"/>}
-            {group.points.map(point => (
-              <g key={point.id}>
-                {point.id === selectedId && <circle cx={point.x} cy={point.y} r="11" stroke={group.series.color} strokeWidth="2" fill="none" opacity=".65"/>}
-                <circle className="chart-point" cx={point.x} cy={point.y} r={point.id === selectedId ? 5 : 2.5} fill={group.series.color} stroke="#1a252a" strokeWidth="1">
-                  <title>{group.series.name + ': ' + formatValue(point.value) + ' ' + (group.series.unit || '') + ', ' + formatDate(point.timestamp)}</title>
-                </circle>
-              </g>
-            ))}
-          </g>
-        ))}
-      </svg>
-    </div>
-  );
-}
-
 function App() {
   const [preview, setPreview] = useState(() => import.meta.env.DEV && new URLSearchParams(window.location.search).has('preview'));
-  const [status, setStatus] = useState<LoadState>('loading');
-  const [error, setError] = useState('');
-  const [liveSeries, setLiveSeries] = useState<Series[]>([]);
-  const [liveMeasurements, setLiveMeasurements] = useState<Measurement[]>([]);
   const [reload, setReload] = useState(0);
   const [range, setRange] = useState<TimeRange>('all');
   const [draftFrom, setDraftFrom] = useState('');
   const [draftTo, setDraftTo] = useState('');
   const [customDates, setCustomDates] = useState<{ from?: string; to?: string }>({});
   const [dateError, setDateError] = useState('');
-  const [tablePage, setTablePage] = useState(0);
   const [chartMode, setChartMode] = useState<'percent' | 'raw'>('percent');
   const [rawSeriesId, setRawSeriesId] = useState('');
   const [hidden, setHidden] = useState<string[]>([]);
-  const streamFilterRef = useRef<StreamFilter>({ range: 'all', hiddenSeriesIds: [], availableSeriesIds: [] });
+  const { status, setStatus, error, liveSeries, liveMeasurements, latestBySeries, now } =
+    useTelemetry({ preview, reload, setReload, range, customDates, hidden });
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [compact, setCompact] = useState(() => window.matchMedia('(max-width: 940px)').matches);
@@ -284,66 +175,6 @@ function App() {
     };
   }, [screen]);
 
-  useEffect(() => {
-    if (preview) { setStatus('ready'); setError(''); return; }
-    const controller = new AbortController();
-    const from = range === 'custom' ? customDates.from : range === 'all' ? undefined :
-      new Date(Date.now() - (range === '24h' ? 1 : range === '7d' ? 7 : 30) * 86_400_000).toISOString();
-    const to = range === 'custom' ? customDates.to : undefined;
-    Promise.all([fetchHealth(controller.signal), fetchSeries(controller.signal)])
-      .then(async ([health, loadedSeries]) => {
-        if (controller.signal.aborted) return;
-        if (health.status !== 'ok') throw new Error('Serwer API nie jest gotowy');
-        const selectedSeriesIds = loadedSeries
-          .filter(item => !hidden.includes(String(item.id)))
-          .map(item => item.id);
-        const loadedMeasurements = selectedSeriesIds.length
-          ? await fetchMeasurements(controller.signal, { from, to, series: selectedSeriesIds })
-          : [];
-        if (controller.signal.aborted) return;
-        setLiveSeries(loadedSeries);
-        setLiveMeasurements(loadedMeasurements);
-        setStatus('ready');
-        setError('');
-      })
-      .catch(reason => {
-        if (controller.signal.aborted) return;
-        setStatus('error');
-        setError(reason instanceof Error ? reason.message : 'Nie udało się pobrać danych');
-      });
-    return () => controller.abort();
-  }, [preview, reload, range, customDates, hidden]);
-
-  // Utrzymuj bieżący filtr osobno od połączenia, bez rozłączania SSE przy każdej zmianie zakresu.
-  useEffect(() => {
-    streamFilterRef.current = {
-      range, from: customDates.from, to: customDates.to,
-      hiddenSeriesIds: hidden,
-      availableSeriesIds: liveSeries.map(item => String(item.id)),
-    };
-  }, [range, customDates, hidden, liveSeries]);
-
-  // SSE jest strumieniem powiadomień; po ponownym połączeniu pobieramy brakujące dane przez REST.
-  useEffect(() => {
-    if (preview || typeof EventSource === 'undefined') {
-      return;
-    }
-    const source = new EventSource('/api/events');
-    let openCount = 0;
-    source.onopen = () => {
-      if (openCount++ > 0) setReload(value => value + 1);
-    };
-    source.addEventListener('measurement', (event: MessageEvent<string>) => {
-      try {
-        const item = JSON.parse(event.data) as Measurement;
-        const filter = streamFilterRef.current;
-        const now = Date.now();
-        setLiveMeasurements(previous => appendStreamMeasurement(previous, item, filter, now));
-      } catch { /* Nieprawidłowa ramka nie zatrzymuje strumienia. */ }
-    });
-    return () => source.close();
-  }, [preview]);
-
   const series = preview ? previewSeries : liveSeries;
   const measurements = preview ? previewMeasurements : liveMeasurements;
   const visibleSeries = useMemo(() => series.filter(item => !hidden.includes(String(item.id))), [series, hidden]);
@@ -358,9 +189,9 @@ function App() {
       });
     }
     const days = range === '24h' ? 1 : range === '7d' ? 7 : 30;
-    const cutoff = Date.now() - days * 86_400_000;
+    const cutoff = now - days * 86_400_000;
     return measurements.filter(item => new Date(item.timestamp).getTime() >= cutoff);
-  }, [measurements, range, customDates]);
+  }, [measurements, range, customDates, now]);
   const filtered = useMemo(
     () => timeFiltered.filter(item => visibleSeries.some(s => String(s.id) === String(item.seriesId))),
     [timeFiltered, visibleSeries],
@@ -370,23 +201,15 @@ function App() {
   const activeSelected = filtered.some(item => String(item.id) === selectedId) ? selectedId : null;
   const chartSeries = chartMode === 'raw' ?
     visibleSeries.filter(item => String(item.id) === (visibleSeries.some(s => String(s.id) === rawSeriesId) ? rawSeriesId : String(visibleSeries[0]?.id))) : visibleSeries;
-  const groupedRows = useMemo(() => groupMeasurements(visibleSeries, filtered), [visibleSeries, filtered]);
-  const rowsPerPage = 35;
-  const lastPage = Math.max(0, Math.ceil(groupedRows.length / rowsPerPage) - 1);
-  const safePage = Math.min(tablePage, lastPage);
-  const pageRows = groupedRows.slice(safePage * rowsPerPage, (safePage + 1) * rowsPerPage);
-
   function toggleSeries(id: string) {
     setHidden(items => items.includes(id) ? items.filter(item => item !== id) : [...items, id]);
     setSelectedId(null);
-    setTablePage(0);
   }
   function enablePreview() {
     setPreview(true);
     setSelectedId(null);
     setRange('all');
     setHidden([]);
-    setTablePage(0);
   }
   function returnToApi() {
     setPreview(false);
@@ -409,36 +232,26 @@ function App() {
       ...(to !== undefined ? { to: new Date(to).toISOString() } : {}) });
     setRange('custom');
     setSelectedId(null);
-    setTablePage(0);
   }
 
   return (
     <div className="app-shell">
       <a className="skip-link" href="#dashboard">Przejdź do głównej treści</a>
       <button className={'scrim ' + (menuOpen ? 'is-open' : '')} aria-label="Zamknij menu" tabIndex={-1} onClick={() => { setMenuOpen(false); menuButton.current?.focus(); }} />
-      <aside ref={sidebarElement} id="mission-navigation" className={'sidebar ' + (menuOpen ? 'is-open' : '')} aria-label="Menu aplikacji" aria-hidden={compact && !menuOpen} inert={compact && !menuOpen}>
-        <a className="brand" href="#dashboard" onClick={openDashboard}>
-          <span className="brand-symbol"><Icon name="planet" size={25}/></span>
-          <span className="brand-copy"><strong>RoverSense</strong></span>
-        </a>
-        <nav className="side-nav" aria-label="Nawigacja główna">
-          <a className={'nav-link ' + (screen === 'dashboard' && activeSection === 'dashboard' ? 'active' : '')} href="#dashboard" aria-current={screen === 'dashboard' && activeSection === 'dashboard' ? 'location' : undefined} onClick={() => { setActiveSection('dashboard'); openDashboard(); }}><Icon name="dashboard"/>Pulpit</a>
-          <a className={'nav-link ' + (screen === 'dashboard' && activeSection === 'telemetry' ? 'active' : '')} href="#telemetry" aria-current={screen === 'dashboard' && activeSection === 'telemetry' ? 'location' : undefined} onClick={() => { setActiveSection('telemetry'); openDashboard(); }}><Icon name="chart"/>Wykres pomiarów</a>
-          <a className={'nav-link ' + (screen === 'dashboard' && activeSection === 'records' ? 'active' : '')} href="#records" aria-current={screen === 'dashboard' && activeSection === 'records' ? 'location' : undefined} onClick={() => { setActiveSection('records'); openDashboard(); }}><Icon name="clock"/>Historia pomiarów</a>
-        </nav>
-        {session && (
-          <div className="nav-secondary">
-            <p className="nav-caption">Zarządzanie</p>
-            <button className={"nav-link " + (screen === "series" ? "active" : "")} type="button" onClick={() => openAdmin("series")}><Icon name="layers"/>Serie pomiarowe</button>
-            <button className={"nav-link " + (screen === "sensors" ? "active" : "")} type="button" onClick={() => openAdmin("sensors")}><Icon name="radio"/>Czujniki</button>
-            <button className={"nav-link " + (screen === "simulations" ? "active" : "")} type="button" onClick={() => openAdmin("simulations")}><Icon name="activity"/>Symulatory</button>
-            <button className={"nav-link " + (screen === "account" ? "active" : "")} type="button" onClick={() => openAdmin("account")}><Icon name="settings"/>Zmiana hasła</button>
-          </div>
-        )}
-        <div className="sidebar-bottom">
-          {session ? <button className="sidebar-login-button" type="button" onClick={() => { onLogout(); setMenuOpen(false); }}><Icon name="logout" size={15}/> Wyloguj się</button> : <button className="sidebar-login-button" type="button" onClick={() => openAdmin('account')}><Icon name="lock" size={15}/> Zaloguj się</button>}
-        </div>
-      </aside>
+      <Sidebar
+        sidebarElement={sidebarElement}
+        menuOpen={menuOpen}
+        compact={compact}
+        signedIn={Boolean(session)}
+        screen={screen}
+        activeSection={activeSection}
+        onDashboardSection={section => {
+          setActiveSection(section);
+          openDashboard();
+        }}
+        onAdminSection={openAdmin}
+        onLogout={() => { onLogout(); setMenuOpen(false); }}
+      />
       <div className="workspace" inert={compact && menuOpen} aria-hidden={compact && menuOpen}>
         {screen === 'dashboard' && <div className="dashboard-landscape" aria-hidden="true"><img src={roverHero} alt=""/></div>}
         <button ref={menuButton} className="mobile-menu" type="button" aria-label={menuOpen ? 'Zamknij menu' : 'Otwórz menu'} aria-controls="mission-navigation" aria-expanded={menuOpen} onClick={() => setMenuOpen(value => !value)}><Icon name="menu"/></button>
@@ -464,7 +277,7 @@ function App() {
                 <div><h2 id="chart-heading">Wykres pomiarów</h2></div>
                 <div className="panel-controls">
                   <div className="range-tabs" role="group" aria-label="Zakres czasu">
-                    {timeRanges.map(option => <button key={option.value} type="button" aria-pressed={range === option.value} onClick={() => { setRange(option.value); setDateError(''); setSelectedId(null); setTablePage(0); }}>{option.label}</button>)}
+                    {timeRanges.map(option => <button key={option.value} type="button" aria-pressed={range === option.value} onClick={() => { setRange(option.value); setDateError(''); setSelectedId(null) }}>{option.label}</button>)}
                   </div>
                   <button className="icon-button" aria-label="Odśwież pomiary" title="Odśwież pomiary" type="button" onClick={() => { if (!preview) { setStatus('loading'); setReload(value => value + 1); } }} disabled={preview || status === 'loading'}><Icon name="refresh" size={15}/></button>
                 </div>
@@ -495,57 +308,30 @@ function App() {
               <div className="panel-heading"><h2 id="series-heading">Ostatnie wartości serii</h2></div>
               <div className="signal-list">
                 {series.length === 0 ? <p className="signal-empty">{status === 'loading' ? 'Wczytywanie serii…' : 'Brak serii do wyświetlenia.'}</p> : series.map(item => {
-                  const last = measurements.find(point => String(point.seriesId) === String(item.id));
-                  return <div key={String(item.id)} className="signal-item"><div className="signal-item-main"><strong>{item.name}</strong></div><span className="signal-item-value" style={{ color: item.color }}>{last ? formatValue(last.value) : '—'} <small>{item.unit || ''}</small></span></div>;
+                  const last = preview
+                    ? previewMeasurements.find(point => String(point.seriesId) === String(item.id))
+                    : latestBySeries[String(item.id)];
+                  return <div key={String(item.id)} className="signal-item"><div className="signal-item-main"><strong>{item.name}</strong></div><span className="signal-item-value" style={{ color: item.color }}>{last ? formatValue(last.value) : last === null ? 'Brak odczytów' : '…'} <small>{item.unit || ''}</small></span></div>;
                 })}
               </div>
-              
+
             </aside>
           </div>
-          <section className="panel table-panel" id="records" aria-labelledby="records-heading">
-            <div className="panel-heading"><div><h2 id="records-heading">Historia pomiarów</h2><p className="subtle">Kliknij wartość, aby zaznaczyć ją na wykresie.</p></div><button className="section-action" type="button" onClick={() => window.print()}><Icon name="print" size={15}/> Drukuj</button></div>
-            {groupedRows.length ? <div className="data-table-wrap">
-              <table className="data-table">
-                <thead><tr><th scope="col">Czas pomiaru (UTC)</th>{visibleSeries.map(item => <th scope="col" key={String(item.id)}><span className="legend-dot" style={{ display: 'inline-block', marginRight: 9, backgroundColor: item.color }}/>{item.name} {item.unit ? '(' + item.unit + ')' : ''}</th>)}</tr></thead>
-                <tbody>{pageRows.map(row =>
-                  <tr key={row.key} className={[...row.cells.values()].some(item => String(item.id) === activeSelected) ? 'selected' : undefined}>
-                    <th scope="row" className="measurement-time">{formatDate(row.timestamp)}</th>
-                    {visibleSeries.map(item => {
-                      const sample = row.cells.get(String(item.id));
-                      return <td key={String(item.id)} className={sample ? undefined : 'is-empty'}>{sample ?
-                        <button className="measurement-cell-button" type="button" aria-pressed={String(sample.id) === activeSelected}
-                          title={'Zaznacz: ' + item.name + ', ' + formatDate(sample.timestamp)} onClick={() => { setSelectedId(String(sample.id)); if (chartMode === 'raw') setRawSeriesId(String(sample.seriesId)); }}>{formatValue(sample.value)}</button> : '—'}</td>;
-                    })}
-                  </tr>,
-                )}</tbody>
-              </table>
-            </div> : <p className="placeholder">{status === 'loading' ? 'Wczytywanie…' : 'Brak pomiarów odpowiadających filtrom.'}</p>}
-            <div className="table-foot"><span>Wiersze {groupedRows.length ? safePage * rowsPerPage + 1 : 0}–{Math.min((safePage + 1) * rowsPerPage, groupedRows.length)} z {groupedRows.length} wczytanych</span>
-              <div className="table-pagination">
-                <button type="button" disabled={safePage === 0} onClick={() => setTablePage(page => Math.max(0, page - 1))}>← Poprzednia</button>
-                <span>Strona {safePage + 1} / {lastPage + 1}</span>
-                <button type="button" disabled={safePage >= lastPage} onClick={() => setTablePage(page => Math.min(lastPage, page + 1))}>Następna →</button>
-              </div>
-            </div>
-          </section>
-          <section className="print-report" aria-label="Raport pomiarów do wydruku">
-            <header className="print-report-head">
-              <h2>RoverSense — raport telemetrii</h2>
-              <p>Zakres: {range === 'custom' ? [customDates.from ? formatDate(customDates.from) : 'początek', customDates.to ? formatDate(customDates.to) : 'teraz'].join(' – ') : range === 'all' ? 'wszystkie wczytane pomiary' : range === '24h' ? 'ostatnie 24 godziny' : range === '7d' ? 'ostatnie 7 dni' : 'ostatnie 30 dni'} · Wykres: {chartMode === 'raw' ? 'jednostki serii' : '% zakresu serii'}</p>
-              <p>Widoczne serie: {visibleSeries.length}.</p>
-              <ul className="print-legend">
-                {visibleSeries.map(item => <li key={String(item.id)}>
-                  <svg viewBox="0 0 42 12" width="42" height="12" aria-hidden="true"><line x1="2" y1="6" x2="40" y2="6" stroke={item.color} strokeWidth="3" strokeDasharray={DASH_PATTERNS[Math.max(0, series.findIndex(s => String(s.id) === String(item.id))) % DASH_PATTERNS.length]}/></svg>
-                  {item.name}{item.unit ? ' (' + item.unit + ')' : ''}
-                </li>)}
-              </ul>
-              <p>{preview ? 'Lokalne dane demonstracyjne. ' : ''}Wydruk obejmuje wszystkie wczytane odczyty spełniające filtry (do 1000 ostatnich wyników pobranych z API). Czas w UTC.</p>
-            </header>
-            <table className="print-table">
-              <thead><tr><th scope="col">Czas pomiaru (UTC)</th>{visibleSeries.map(item => <th scope="col" key={String(item.id)}>{item.name}{item.unit ? ' (' + item.unit + ')' : ''}</th>)}</tr></thead>
-              <tbody>{groupedRows.map(row => <tr key={row.key}><th scope="row">{formatDate(row.timestamp)}</th>{visibleSeries.map(item => <td key={String(item.id)}>{row.cells.has(String(item.id)) ? formatValue(row.cells.get(String(item.id))!.value) : '—'}</td>)}</tr>)}</tbody>
-            </table>
-          </section>
+          <MeasurementHistory
+            series={series}
+            visibleSeries={visibleSeries}
+            filtered={filtered}
+            selectedId={activeSelected}
+            onSelect={(id, seriesId) => {
+              setSelectedId(id);
+              if (chartMode === 'raw') setRawSeriesId(seriesId);
+            }}
+            chartMode={chartMode}
+            range={range}
+            customDates={customDates}
+            preview={preview}
+            loading={status === 'loading'}
+          />
           <footer className="footer"><span>RoverSense</span></footer>
           </>)}
         </main>

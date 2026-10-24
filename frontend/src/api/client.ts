@@ -41,3 +41,20 @@ export function fetchMeasurements(signal?: AbortSignal, filters: MeasurementFilt
   if (filters.series?.length) params.set('series', filters.series.map(String).join(','));
   return readJson<Measurement[]>('/api/measurements?' + params, signal);
 }
+
+/** The summary panel needs one latest reading per series, not a page of the global history. */
+export async function fetchLatestForSeries(
+  series: readonly Series[], signal?: AbortSignal,
+): Promise<Array<{ seriesId: string; measurement: Measurement | null }>> {
+  const results: Array<{ seriesId: string; measurement: Measurement | null }> = [];
+  for (let index = 0; index < series.length; index += 6) {
+    const batch = await Promise.all(series.slice(index, index + 6).map(async item => {
+      const id = String(item.id);
+      const query = new URLSearchParams({ sort: '-timestamp', limit: '1', series: id });
+      const rows = await readJson<Measurement[]>('/api/measurements?' + query, signal);
+      return { seriesId: id, measurement: rows[0] ?? null };
+    }));
+    results.push(...batch);
+  }
+  return results;
+}

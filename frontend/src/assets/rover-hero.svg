@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="-1120 0 2240 550" role="img" aria-labelledby="title description">
-  <title id="title">Łazik marsjański — dopracowana ilustracja SVG</title>
-  <desc id="description">Dopracowana ilustracja SVG marsjańskiego łazika: spójne przeguby i zawieszenie sześciu kół, maszt kamerowy, manipulator i instrumenty. Całość zbudowana z edytowalnych elementów wektorowych.</desc>
+  <title id="title">Łazik marsjański</title>
+  <desc id="description">Ilustracja marsjańskiego łazika: spójne przeguby i zawieszenie sześciu kół, maszt kamerowy, manipulator i instrumenty. Całość zbudowana z edytowalnych elementów wektorowych.</desc>
   <defs>
     <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#695351"/>
@@ -90,7 +90,7 @@
   <!-- Soft contact shadow is below every rover component. -->
   <ellipse cx="790" cy="468" rx="297" ry="43" fill="#211d1b" opacity=".52" filter="url(#ground-shadow)"/>
 
-  <!-- Rover. Geometric parts share anchor points: no disconnected rods, axes or struts. -->
+
   <g id="rover" transform="translate(451 98) scale(1.1)" stroke-linecap="round" stroke-linejoin="round">
 
     <!-- Far-side bogie and wheels (visually behind the body). -->

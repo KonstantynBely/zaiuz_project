@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { createSimulationPoller } from './simulationPolling';
 import type { Series } from '../../api/client';
 import { adminApi, ApiRequestError, type Simulation, type SimulationInput, type SimulationState } from '../../api/admin';
 
@@ -35,33 +36,56 @@ export function SimulationPanel({ token, onUnauthorized, onMeasurementsChanged, 
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [pollError, setPollError] = useState('');
+  const pollerRef = useRef<ReturnType<typeof createSimulationPoller<Simulation[]>> | null>(null);
+  const sessionEpoch = useRef(0);
   const [notice, setNotice] = useState('');
 
   const selectedSeries = useMemo(() => series.find(item => String(item.id) === seriesId), [series, seriesId]);
   const activeRuns = useMemo(() => runs.filter(run => runningStates.includes(run.state)), [runs]);
 
-  const load = useCallback(async (includeSeries: boolean, showLoading: boolean) => {
-    if (showLoading) setLoading(true);
-    try {
-      const [loadedSeries, loadedRuns] = await Promise.all([
-        includeSeries ? adminApi.listSeries() : Promise.resolve(null),
-        adminApi.listSimulations(token),
-      ]);
-      if (loadedSeries) setSeries(loadedSeries);
-      setRuns(loadedRuns);
-    } catch (reason) {
-      if (reason instanceof ApiRequestError && reason.status === 401) { onUnauthorized(); return; }
-      setError(describe(reason));
-    } finally {
-      if (showLoading) setLoading(false);
-    }
-  }, [token, onUnauthorized]);
-
   useEffect(() => {
-    void load(true, true);
-    const timer = window.setInterval(() => { void load(false, false); }, 2500);
-    return () => window.clearInterval(timer);
-  }, [load]);
+    let active = true;
+    const epoch = ++sessionEpoch.current;
+    const controller = new AbortController();
+    setLoading(true);
+
+    void adminApi.listSeries(controller.signal)
+      .then(items => {
+        if (active && sessionEpoch.current === epoch) setSeries(items);
+      })
+      .catch(reason => {
+        if (!active || sessionEpoch.current !== epoch || controller.signal.aborted) return;
+        if (reason instanceof ApiRequestError && reason.status === 401) onUnauthorized();
+        else setPollError(describe(reason));
+      })
+      .finally(() => {
+        if (active && sessionEpoch.current === epoch) setLoading(false);
+      });
+
+    const poller = createSimulationPoller<Simulation[]>({
+      load: signal => adminApi.listSimulations(token, signal),
+      apply: items => {
+        if (!active || sessionEpoch.current !== epoch) return;
+        setRuns(items);
+        setPollError('');
+      },
+      fail: reason => {
+        if (!active || sessionEpoch.current !== epoch) return;
+        if (reason instanceof ApiRequestError && reason.status === 401) onUnauthorized();
+        else setPollError(describe(reason));
+      },
+    });
+    pollerRef.current = poller;
+    void poller.poll();
+    return () => {
+      active = false;
+      ++sessionEpoch.current;
+      controller.abort();
+      poller.stop();
+      if (pollerRef.current === poller) pollerRef.current = null;
+    };
+  }, [token, onUnauthorized]);
 
   function chooseSeries(id: string) {
     setSeriesId(id);
@@ -96,32 +120,46 @@ export function SimulationPanel({ token, onUnauthorized, onMeasurementsChanged, 
       ...(pattern === 'observed' ? { station } : { count: parsedCount, min, max }),
       ...(name.trim() ? { name: name.trim() } : {}),
     };
+    const epoch = sessionEpoch.current;
+    pollerRef.current?.invalidate();
     setBusy(true); setError(''); setNotice('');
     try {
       const run = await adminApi.startSimulation(token, input);
+      if (sessionEpoch.current !== epoch) return;
       setRuns(previous => [run, ...previous.filter(item => item.id !== run.id)]);
       setNotice(pattern === 'observed'
         ? 'Uruchomiono odtwarzanie obserwacji METAR (Aviation Weather Center).'
         : 'Uruchomiono symulację.');
-      void load(false, false);
+      pollerRef.current?.refresh();
     } catch (reason) {
+      if (sessionEpoch.current !== epoch) return;
       if (reason instanceof ApiRequestError && reason.status === 401) onUnauthorized();
       else setError(describe(reason));
-    } finally { setBusy(false); }
+      pollerRef.current?.refresh();
+    } finally {
+      if (sessionEpoch.current === epoch) setBusy(false);
+    }
   }
 
   async function stop(id: string) {
+    const epoch = sessionEpoch.current;
+    pollerRef.current?.invalidate();
     setBusy(true); setError(''); setNotice('');
     try {
       const run = await adminApi.stopSimulation(token, id);
+      if (sessionEpoch.current !== epoch) return;
       setRuns(previous => previous.map(item => item.id === run.id ? run : item));
       setNotice('Zatrzymano symulację. Zapisane pomiary pozostały w historii.');
       onMeasurementsChanged();
-      void load(false, false);
+      pollerRef.current?.refresh();
     } catch (reason) {
+      if (sessionEpoch.current !== epoch) return;
       if (reason instanceof ApiRequestError && reason.status === 401) onUnauthorized();
       else setError(describe(reason));
-    } finally { setBusy(false); }
+      pollerRef.current?.refresh();
+    } finally {
+      if (sessionEpoch.current === epoch) setBusy(false);
+    }
   }
 
   return <div className="admin-view simulation-view">
@@ -129,6 +167,7 @@ export function SimulationPanel({ token, onUnauthorized, onMeasurementsChanged, 
       <h1>Symulatory</h1>
       <p>Uruchamiaj i zatrzymuj symulacje pomiarów.</p>
     </div>
+    {pollError && <p role="status" className="form-message error">{pollError}</p>}
     {error && <p role="alert" className="form-message error">{error}</p>}
     {notice && <p role="status" className="form-message success">{notice}</p>}
     <div className="sim-layout">
