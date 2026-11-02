@@ -13,7 +13,7 @@ test('SSE received during REST fetch survives the snapshot, including initial se
   const epoch = state.begin({ ...all, availableSeriesIds:[] }, now);
   state.receive(point('event',t(-1000)),now);
   assert.deepEqual(state.visible(now),[]);
-  assert.deepEqual(state.finish(epoch,[point('rest',t(-2000))],all,now).map(x=>x.id),['event','rest']);
+  assert.deepEqual(state.finish(epoch,[point('rest',t(-2000))],all,now).map( x=>x.id),['event','rest']);
 });
 
 test('stale REST response after filter change is rejected, including SSE from prior filter', () => {
@@ -23,22 +23,22 @@ test('stale REST response after filter change is rejected, including SSE from pr
   const current = state.begin(custom,now);
   assert.equal(state.finish(old,[point('old',t(-500))],all,now),null);
   state.receive(point('inside',t(-100_000)),now);
-  assert.deepEqual(state.finish(current,[point('history',t(-200_000))],custom,now).map(x=>x.id),['inside','history']);
+  assert.deepEqual(state.finish(current,[point('history',t(-200_000))],custom,now).map( x=>x.id),['inside','history']);
 });
 
 test('reconnect REST snapshot is authoritative; no unconditional merge of older history', () => {
   const state = new TelemetryReconciler();
   state.finish(state.begin(all,now),[point('old',t(-10_000))],all,now);
-  assert.deepEqual(state.finish(state.begin(all,now),[point('new',t(-1000))],all,now).map(x=>x.id),['new']);
+  assert.deepEqual(state.finish(state.begin(all,now),[point('new',t(-1000))],all,now).map( x=>x.id),['new']);
 });
 
 test('measurements are deduplicated and newest first with limit 1000', () => {
-  const rows = Array.from({ length: 1004 },(_,i)=>point(String(i+1),t(-i*1000)));
+  const rows = Array.from({ length: 1004 }, (_,i)=>point(String(i+1),t(-i*1000)));
   const result = reconcileMeasurements(rows,[point('1',t(0))],all,now);
   assert.equal(result.length,1000);
-  assert.equal(new Set(result.map(x=>x.id)).size,1000);
+  assert.equal(new Set(result.map( x=>x.id)).size,1000);
   assert.equal(result[0].id,'1');
-  assert.ok(!result.some(x=>x.id==='1004'));
+  assert.ok(!result.some( x=>x.id==='1004'));
 });
 
 test('rolling 24h expires without arriving samples', () => {

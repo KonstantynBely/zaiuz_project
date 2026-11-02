@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+# Aktywacja wcześniej przygotowanego wydania przez konto uprawnione w sudoers.
+# Argument: pełne 40-znakowe SHA; źródło: incoming/<SHA> albo istniejące releases/<SHA>.
+# Skutki: przeniesienie plików, zmiana current, migracje, restart i kontrola HTTP.
+# Kod 0 oznacza potwierdzony healthcheck; błąd uruchamia dostępne przywrócenie kodu.
+# Skrypt nie cofa migracji ani zmian danych i nie służy do lokalnego testowania aplikacji.
 set -euo pipefail
 
 if [[ $EUID -ne 0 || $# -ne 1 || ! $1 =~ ^[0-9a-f]{40}$ ]]; then
@@ -90,6 +95,9 @@ if [[ -L $current ]]; then
 fi
 
 restore_previous() {
+  # Przywróć poprzedni cel current przez atomową podmianę dowiązania.
+  # Korzysta z globalnych previous/next/current; przy pierwszym wdrożeniu usuwa current.
+  # Ta funkcja nie restartuje usługi ani nie przywraca poprzedniego schematu bazy.
   if [[ -n $previous ]]; then
     ln -s "$previous" "$next"
     mv -Tf "$next" "$current"

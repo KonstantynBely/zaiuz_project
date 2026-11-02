@@ -1,9 +1,11 @@
 import type { Pool } from 'pg';
 import { transaction } from '../../common/transaction.js';
 
+/** Wiersz SQL pomiaru; timestamp jest Date, sensor_id może być NULL, a ID pozostają tekstem. */
 export interface MeasurementRow {
   id: string; series_id: string; sensor_id: string | null; value:number; timestamp:Date;
 }
+/** Zablokowany czujnik i zakres jego serii używane do transakcyjnej autoryzacji zapisu. */
 interface SensorForWrite {
   id:string; series_id:string; min_value:number; max_value:number;
 }
@@ -11,6 +13,10 @@ const projection='id::text,series_id::text,sensor_id::text,value,timestamp';
 
 export function createMeasurementsRepository(pool: Pool) {
   return {
+    /**
+     * Filtruje serie i domknięty przedział czasu, sortuje po timestamp i ID oraz stosuje limit.
+     * Wartości trafiają do parametrów SQL; kierunek sortowania pochodzi z rozpoznanej unii.
+     */
     async list(filter:{series?:string[];from?:Date;to?:Date;sort:'timestamp'|'-timestamp';limit:number}):Promise<MeasurementRow[]> {
       const predicates:string[]=[];const values:unknown[]=[];
       if (filter.series) {values.push(filter.series);predicates.push(`series_id = ANY($${values.length}::bigint[])`);}
@@ -24,12 +30,21 @@ export function createMeasurementsRepository(pool: Pool) {
       );
       return result.rows;
     },
+    /**
+     * Odczytuje pomiar po tekstowym BIGINT, korzystając z osobnego indeksu ID.
+     * @returns Wiersz pomiaru lub null.
+     */
     async findById(id:string):Promise<MeasurementRow|null> {
       return (await pool.query<MeasurementRow>(`SELECT ${projection} FROM measurements WHERE id=$1 LIMIT 1`,[id])).rows[0]??null;
     },
+    /**
+     * Blokuje czujnik i serię, sprawdza aktywność klucza, zakres i granicę przyszłości, a potem zapisuje wynik.
+     * Blokada serii synchronizuje zapis ze zmianą jej zakresu; limit przyszłości wynosi 5 minut.
+     * @returns Zapisany wiersz albo rozpoznana przyczyna odmowy; nie zapisuje rejestru odrzucenia w tej transakcji.
+     */
     async insertWithKey(hash:string,value:number,timestamp:Date):Promise<
       {row:MeasurementRow} | {error:'auth'|'range'|'future';sensorId?:string} > {
-      return transaction(pool,async client=>{
+      return transaction(pool, async client=>{
         // FOR UPDATE blokuje serię na czas sprawdzenia i zapisu. Aktualizacja
         // zakresu serii korzysta z tej samej blokady, także między procesami API.
         const lookup=await client.query<SensorForWrite>(
@@ -50,6 +65,10 @@ export function createMeasurementsRepository(pool: Pool) {
         return {row:result.rows[0]!};
       });
     },
+    /**
+     * Zapisuje odrzucenie semantyczne pomiaru bez treści żądania i bez klucza API.
+     * @param sensorId Znany czujnik lub null, jeśli odrzucenia nie da się z nim powiązać.
+     */
     async logRejection(sensorId:string|null,status:number,reason:string) {
       await pool.query('INSERT INTO rejected_measurements(sensor_id,http_status,reason) VALUES($1,$2,$3)',
         [sensorId,status,reason]);

@@ -27,8 +27,8 @@ test('Zmiana hasła odrzuca spóźnione logowanie starym hasłem i cofa sesje', 
   const tokens = new Set([digest(oldToken)]);
   let release!: () => void;
   let reached!: () => void;
-  const gate = new Promise<void>(resolve => { release = resolve; });
-  const ready = new Promise<void>(resolve => { reached = resolve; });
+  const gate = new Promise<void>( resolve => { release = resolve; });
+  const ready = new Promise<void>( resolve => { reached = resolve; });
   const repository: AuthRepository = {
     findAdmin: async () => ({ ...admin }),
     findSession: async token => tokens.has(token) ? { ...admin } : null,

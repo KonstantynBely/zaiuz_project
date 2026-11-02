@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { hashPassword } from '../../backend/src/modules/auth/auth.service.js';
-import { createPool } from '../../backend/src/database/pool.js';
+import { createTestPool } from '../helpers/testDatabase.js';
 import { buildApp } from '../../backend/src/app.js';
 import { ApiError } from '../../backend/src/common/errors.js';
 import { createSensorsRepository } from '../../backend/src/modules/sensors/sensors.repository.js';
@@ -9,7 +9,7 @@ import { createSimulationsRepository } from '../../backend/src/modules/simulatio
 import { keyHash } from '../../backend/src/modules/sensors/sensors.service.js';
 
 test('Symulacja przez REST tworzy dedykowany sensor, przesyła i zachowuje wyniki',async()=>{
-  const pool=createPool();
+  const pool=createTestPool();
   const observedTime = Date.now() - 3_600_000;
   const observedSamples = [
     { value: 4, timestamp: new Date(observedTime - 120_000).toISOString() },
@@ -19,8 +19,8 @@ test('Symulacja przez REST tworzy dedykowany sensor, przesyła i zachowuje wynik
   let holdObserved=false;
   let waitingForObservations=0;
   let releaseObservations:()=>void=()=>{};
-  const observationsGate=new Promise<void>(resolve=>{releaseObservations=resolve;});
-  const app=buildApp({pool,loadObserved:async station=>{
+  const observationsGate=new Promise<void>( resolve=>{releaseObservations=resolve;});
+  const app=buildApp({pool, loadObserved:async station=>{
     if(station==='EPKK')throw new ApiError(503,'Test: zewnętrzne źródło niedostępne');
     if(station==='EPGD') return [
       { value: -80, timestamp: observedSamples[0]!.timestamp },
@@ -35,7 +35,7 @@ test('Symulacja przez REST tworzy dedykowany sensor, przesyła i zachowuje wynik
   }});
   const restCalls={register:0,revoke:0};
   let rejectAllMeasurements=false;
-  app.addHook('onRequest',async (request,reply)=>{
+  app.addHook('onRequest', async (request,reply)=>{
     if (rejectAllMeasurements && request.method==='POST' && request.url==='/api/measurements') {
       return reply.code(422).type('application/problem+json').send({
         type:'about:blank',title:'Niepoprawna wartość',status:422,
@@ -43,7 +43,7 @@ test('Symulacja przez REST tworzy dedykowany sensor, przesyła i zachowuje wynik
       });
     }
   });
-  app.addHook('onRequest',async request=>{
+  app.addHook('onRequest', async request=>{
     const key=request.headers['x-roversense-worker-key'];
     if (typeof key !== 'string' || !/^[0-9a-f]{64}$/.test(key)) return;
     if (request.method==='POST' && request.url==='/api/sensors') restCalls.register++;
@@ -83,7 +83,7 @@ test('Symulacja przez REST tworzy dedykowany sensor, przesyła i zachowuje wynik
       const result=await app.inject({method:'GET',url:`/api/simulations/${id}`,headers:auth});
       const row=result.json();
       if(row.state==='completed'||row.state==='failed'){completed=row;break;}
-      await new Promise(resolve=>setTimeout(resolve,100));
+      await new Promise( resolve=>setTimeout(resolve,100));
     }
     assert.equal(completed?.state,'completed',JSON.stringify(completed));
     assert.equal(completed?.acceptedCount,3);
@@ -91,9 +91,9 @@ test('Symulacja przez REST tworzy dedykowany sensor, przesyła i zachowuje wynik
     const points=await app.inject({method:'GET',url:`/api/measurements?series=${seriesId}`});
     assert.equal(points.statusCode,200);
     assert.equal(points.json().length,3);
-    assert.ok(points.json().every((row:{sensorId:string})=>row.sensorId===sensorId));
+    assert.ok(points.json().every( (row:{sensorId:string})=>row.sensorId===sensorId));
     const sensors=await app.inject({method:'GET',url:'/api/sensors',headers:auth});
-    assert.ok(!sensors.json().some((row:{id:string})=>row.id===sensorId));
+    assert.ok(!sensors.json().some( (row:{id:string})=>row.id===sensorId));
     const stopped=await app.inject({method:'POST',url:`/api/simulations/${id}/stop`,headers:auth});
     assert.equal(stopped.statusCode,200);
     assert.equal(stopped.json().state,'completed');
@@ -133,15 +133,15 @@ test('Symulacja przez REST tworzy dedykowany sensor, przesyła i zachowuje wynik
       const response=await app.inject({method:'GET',url:`/api/simulations/${observed.json().id}`,headers:auth});
       const state=response.json();
       if(state.state==='completed'||state.state==='failed'){actual=state;break;}
-      await new Promise(resolve=>setTimeout(resolve,100));
+      await new Promise( resolve=>setTimeout(resolve,100));
     }
     assert.equal(actual?.state,'completed',JSON.stringify(actual));
     assert.equal(actual?.acceptedCount,3);
     const measurements=await app.inject({method:'GET',url:`/api/measurements?series=${seriesId}&limit=100`});
-    const metar=measurements.json().filter((value:{sensorId:string})=>value.sensorId===observed.json().sensorId);
+    const metar=measurements.json().filter( (value:{sensorId:string})=>value.sensorId===observed.json().sensorId);
     assert.equal(metar.length,3);
-    assert.deepEqual(metar.map((value:{value:number})=>value.value),[4,5,6]);
-    assert.deepEqual(metar.map((value:{timestamp:string})=>value.timestamp),observedSamples.map(p=>p.timestamp));
+    assert.deepEqual(metar.map( (value:{value:number})=>value.value),[4,5,6]);
+    assert.deepEqual(metar.map( (value:{timestamp:string})=>value.timestamp),observedSamples.map( p=>p.timestamp));
 
     // METAR poza zakresem powinien zostać odrzucony PRZED utworzeniem sensora
     // i rekordu symulacji, a nie ukończyć zadanie z samymi odrzutami.
@@ -166,7 +166,7 @@ test('Symulacja przez REST tworzy dedykowany sensor, przesyła i zachowuje wynik
         const response=await app.inject({method:'GET',url:`/api/simulations/${rejectedRun.json().id}`,headers:auth});
         const state=response.json();
         if(state.state==='failed'||state.state==='completed'){failed=state;break;}
-        await new Promise(resolve=>setTimeout(resolve,50));
+        await new Promise( resolve=>setTimeout(resolve,50));
       }
       assert.equal(failed?.state,'failed',JSON.stringify(failed));
       assert.equal(failed?.acceptedCount,0);
@@ -184,12 +184,12 @@ test('Symulacja przez REST tworzy dedykowany sensor, przesyła i zachowuje wynik
     // Przytrzymanie czterech żądań na etapie pobierania źródła weryfikuje
     // rzeczywistą współbieżność inicjalizacji, a nie tylko już uruchomione zadania.
     holdObserved=true;
-    const parallelRequests=Array.from({length:4},()=>app.inject({
+    const parallelRequests=Array.from({length:4}, ()=>app.inject({
       method:'POST',url:'/api/simulations',headers:auth,
       payload:{seriesId,mode:'live',pattern:'observed',station:'EPWA',intervalMs:60000},
     }));
     for(let i=0;i<100 && waitingForObservations<4;i++) {
-      await new Promise(resolve=>setTimeout(resolve,20));
+      await new Promise( resolve=>setTimeout(resolve,20));
     }
     assert.equal(waitingForObservations,4,'Cztery inicjalizacje powinny równocześnie oczekiwać na dane');
     const fifthConcurrent=await app.inject({method:'POST',url:'/api/simulations',headers:auth,
@@ -197,8 +197,8 @@ test('Symulacja przez REST tworzy dedykowany sensor, przesyła i zachowuje wynik
     assert.equal(fifthConcurrent.statusCode,409,fifthConcurrent.body);
     releaseObservations();
     const startedTogether=await Promise.all(parallelRequests);
-    assert.deepEqual(startedTogether.map(response=>response.statusCode),[202,202,202,202],
-      startedTogether.map(response=>response.body).join('\\n'));
+    assert.deepEqual(startedTogether.map( response=>response.statusCode),[202,202,202,202],
+      startedTogether.map( response=>response.body).join('\\n'));
     for(const response of startedTogether) {
       const stopped=await app.inject({method:'POST',
         url:`/api/simulations/${response.json().id}/stop`,headers:auth});
@@ -228,7 +228,7 @@ test('Symulacja przez REST tworzy dedykowany sensor, przesyła i zachowuje wynik
     assert.equal(logoutStop.statusCode,200,logoutStop.body);
     assert.equal(logoutStop.json().state,'stopped');
     const retired=await app.inject({method:'GET',url:'/api/sensors',headers:freshAuth});
-    assert.ok(!retired.json().some((sensor:{id:string})=>sensor.id===postLogoutStart.json().sensorId));
+    assert.ok(!retired.json().some( (sensor:{id:string})=>sensor.id===postLogoutStart.json().sensorId));
 
     assert.ok(restCalls.register>=12,'Symulacje muszą rejestrować sensor przez HTTP REST');
     assert.equal(restCalls.revoke,restCalls.register,

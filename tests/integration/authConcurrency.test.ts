@@ -1,18 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { createPool } from '../../backend/src/database/pool.js';
+import { createTestPool } from '../helpers/testDatabase.js';
 import { createAuthRepository } from '../../backend/src/modules/auth/auth.repository.js';
 import { createAuthService, hashPassword } from '../../backend/src/modules/auth/auth.service.js';
 
 test('PostgreSQL: token sprawdzony przed zmianą hasła nie może zostać zapisany po zmianie', async () => {
-  const pool = createPool();
+  const pool = createTestPool();
   const repository = createAuthRepository(pool);
   let id: string | undefined;
   let release!: () => void;
   let reached!: () => void;
-  const gate = new Promise<void>(resolve => { release = resolve; });
-  const ready = new Promise<void>(resolve => { reached = resolve; });
+  const gate = new Promise<void>( resolve => { release = resolve; });
+  const ready = new Promise<void>( resolve => { reached = resolve; });
   const username = `auth_race_${Date.now()}_${Math.random().toString(36).slice(2)}`;
   try {
     const oldHash = await hashPassword('old-concurrency-password');

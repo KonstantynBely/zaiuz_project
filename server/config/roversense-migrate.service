@@ -4,6 +4,8 @@ Requires=postgresql@17-main.service
 After=postgresql@17-main.service
 
 [Service]
+# Jednorazowa migracja aktywnego wydania; aktywator czeka na jej wynik przed restartem API.
+# Błąd zatrzymuje wdrożenie. Cofnięcie dowiązania current nie cofa wykonanych migracji.
 Type=oneshot
 User=roversense
 Group=roversense

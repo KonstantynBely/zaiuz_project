@@ -7,13 +7,17 @@ type Props = Omit<ComponentPropsWithoutRef<'input'>, 'type' | 'value' | 'onChang
   onChange: (value: string) => void;
 };
 
+/**
+ * Renderuje kontrolowane pole hasła z komunikatem przekroczenia 72 bajtów UTF-8.
+ * Nie ucina wpisanej wartości; łączy komunikat z polem przez aria-describedby i przekazuje zmianę rodzicowi.
+ */
 export function PasswordInput({ id, value, onChange, ...props }: Props) {
   const bytes = passwordByteLength(value);
   const tooLong = bytes > MAX_PASSWORD_BYTES;
   const errorId = id + '-length-error';
   return <>
     <input {...props} id={id} type="password" value={value}
-      onChange={event => onChange(event.target.value)}
+      onChange={ event => onChange(event.target.value)}
       aria-invalid={tooLong || undefined} aria-describedby={tooLong ? errorId : undefined}/>
     {tooLong && <p id={errorId} className="form-message error" role="alert">
       Hasło jest za długie: {bytes} z maksymalnie {MAX_PASSWORD_BYTES} bajtów UTF-8.

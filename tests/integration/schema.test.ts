@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createPool } from '../../backend/src/database/pool.js';
+import { createTestPool } from '../helpers/testDatabase.js';
 import { buildApp } from '../../backend/src/app.js';
 
 test('TimescaleDB: migracja tworzy hypertable measurements', async () => {
-  const pool = createPool();
+  const pool = createTestPool();
   try {
     const ext = await pool.query("SELECT extname FROM pg_extension WHERE extname = 'timescaledb'");
     assert.equal(ext.rows[0]?.extname, 'timescaledb');

@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+# Kopia bazy i ról wykonywana jako postgres, bez argumentów i sekretów w logach.
+# Wynik: prywatny katalog z dumpem, globals.sql, spisem obiektów i sumami SHA-256.
+# flock zapobiega nakładaniu zadań; katalog tymczasowy jest usuwany po awarii.
+# Retencja dotyczy tylko katalogów backup-* starszych niż 14 dni w ustalonej ścieżce.
+# Udany pg_restore -l sprawdza spis archiwum, a nie możliwość odtworzenia całej bazy.
 set -euo pipefail
 umask 077
 

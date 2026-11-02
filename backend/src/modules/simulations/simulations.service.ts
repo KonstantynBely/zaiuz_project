@@ -6,8 +6,10 @@ import type { SimulationsRepository, SimulationRow } from './simulations.reposit
 import type { SimulationInput, SimulationParameters, SimulationState } from './simulations.schema.js';
 import { loadMetarTemperatures, type MetarStation, type ObservedPoint } from './metar.source.js';
 
+/** Uchwyt żywego zadania: sygnał przerwania i Promise kończący się po sprzątaniu. */
 interface Job { controller:AbortController; finished:Promise<void> }
-export const MAX_CONCURRENT_SIMULATIONS = 4;
+/** Wspólny limit zadań wykonujących się i rezerwacji Start, które jeszcze tworzą sensor lub pobierają METAR. */
+const MAX_CONCURRENT_SIMULATIONS = 4;
 
 function expose(row:SimulationRow) {
   return {
@@ -17,27 +19,44 @@ function expose(row:SimulationRow) {
     error:row.error_summary,
   };
 }
+/**
+ * Wymaga skończonego, rosnącego zakresu symulacji zawartego w zakresie docelowej serii.
+ * @throws ApiError 422 przed rejestracją czujnika.
+ */
 function rangeCheck(params:SimulationParameters,series:{minValue:number;maxValue:number}) {
   if (!Number.isFinite(params.min)||!Number.isFinite(params.max)||
       params.min>=params.max||params.min<series.minValue||params.max>series.maxValue) {
     throw new ApiError(422,'Przedział symulacji musi mieścić się w zakresie serii');
   }
 }
+/**
+ * Generuje próbkę losową lub sinusoidalną przeskalowaną do granic zadania.
+ * @param index Numer próbki od zera; dla sinusoidy okres wynika z zadanej liczby próbek.
+ */
 function makeValue(params:SimulationParameters,index:number):number {
   const ratio=params.pattern==='random' ? Math.random() :
     0.5+0.5*Math.sin(index*2*Math.PI/Math.max(params.count-1,2));
   return params.min+(params.max-params.min)*ratio;
 }
+/**
+ * Czeka podaną liczbę milisekund, reagując na AbortSignal bez oczekiwania do końca interwału.
+ * @throws Error po anulowaniu; przy udanym timeout usuwa nasłuch abort.
+ */
 function pause(ms:number,signal:AbortSignal):Promise<void> {
-  return new Promise((resolve,reject)=>{
+  return new Promise( (resolve,reject)=>{
     if(signal.aborted){reject(new Error('Zatrzymano symulację'));return;}
-    const id=setTimeout(()=>{signal.removeEventListener('abort',aborted);resolve();},ms);
+    const id=setTimeout( ()=>{signal.removeEventListener('abort',aborted);resolve();},ms);
     function aborted(){clearTimeout(id);reject(new Error('Zatrzymano symulację'));}
     signal.addEventListener('abort',aborted,{once:true});
   });
 }
 
-/** Jednoproceseowy wykonawca trzyma klucz tylko w pamięci do końca zadania. */
+/**
+ * Tworzy jednoproceseowego wykonawcę maksymalnie czterech zadań, z rezerwacją miejsc na trwające starty.
+ * Klucze sensorów utrzymuje w pamięci; stan i kolejkę sprzątania zapisuje przez repozytorium.
+ * @param loadObserved Wstrzykiwalny dostawca temperatur, domyślnie źródło METAR.
+ * @returns Operacje list/get/start/stop/close; close trzeba wykonać przed zamknięciem puli.
+ */
 export function createSimulationsService(
   app:FastifyInstance, repo:SimulationsRepository, sensorApi:SimulationHttpClient,
   loadObserved: (station: MetarStation) => Promise<ObservedPoint[]> = loadMetarTemperatures,
@@ -50,6 +69,10 @@ export function createSimulationsService(
   let cleanupTimer: ReturnType<typeof setTimeout> | undefined;
   let cleanupTask: Promise<void> | undefined;
 
+  /**
+   * Próbuje wyrejestrować czujniki z trwałej kolejki przez REST i loguje nieudane próby.
+   * Po zakończeniu planuje kolejną próbę, o ile wykonawca nie kończy pracy.
+   */
   async function retryCleanup() {
     try {
       for (const sensorId of await repo.pendingCleanup()) {
@@ -63,12 +86,17 @@ export function createSimulationsService(
       if (!closing) scheduleCleanup();
     }
   }
+  /** Planuje pojedynczy przebieg kolejki za 5 s; timer nie podtrzymuje sam procesu Node. */
   function scheduleCleanup() {
-    cleanupTimer = setTimeout(() => { cleanupTask = retryCleanup(); }, 5000);
+    cleanupTimer = setTimeout( () => { cleanupTask = retryCleanup(); }, 5000);
     cleanupTimer.unref();
   }
   scheduleCleanup();
 
+  /**
+   * Najpierw trwale oznacza czujnik do sprzątania, a następnie unieważnia go przez REST.
+   * Błąd REST pozostawia wpis do późniejszego ponowienia.
+   */
   async function retireSensor(sensorId: string) {
     // The queue entry was committed together with sensor registration.
     // Mark it ready before REST so a failed request remains retryable.
@@ -76,6 +104,11 @@ export function createSimulationsService(
     await sensorApi.revokeSensor(sensorId);
   }
 
+  /**
+   * Wykonuje zadanie: nadaje próbki przez POST /api/measurements, zlicza odpowiedzi i czeka tylko w live.
+   * Historyczne METAR zachowują czas obserwacji; syntetyczne próbki otrzymują daty sprzed startu.
+   * Zawsze próbuje wyrejestrować czujnik i zapisać stan końcowy; błąd sprzątania oznacza failed.
+   */
   async function execute(id:string,sensorId:string,key:string,params:SimulationParameters,signal:AbortSignal, observations:ObservedPoint[] | null) {
     let finalState:SimulationState='completed';
     let errorMessage:string|undefined;
@@ -105,7 +138,7 @@ export function createSimulationsService(
       }
       if (finalState==='completed' && accepted===0) {
         finalState='failed';
-        errorMessage='Wszystkie pomiary zostały odrzucone przez API. Sprawdź zakres serii i historię odrzuconych pomiarów.';
+        errorMessage='Wszystkie pomiary zostały odrzucone przez API. Sprawdź zakres serii i ustawienia symulacji.';
       }
     } catch(error) {
       finalState=signal.aborted?'stopped':'failed';
@@ -124,11 +157,21 @@ export function createSimulationsService(
   }
   return {
     async list() {return (await repo.list()).map(expose);},
+    /**
+     * Waliduje ID i odczytuje publiczny stan uruchomienia.
+     * @throws ApiError 404, gdy zadanie nie istnieje.
+     */
     async get(id:string) {
       const row=await repo.get(parseId(id));
       if(!row)throw new ApiError(404,'Nie znaleziono symulacji');
       return expose(row);
     },
+    /**
+     * Rezerwuje miejsce, sprawdza serię oraz opcjonalne METAR, rejestruje sensor i uruchamia pracę w tle.
+     * Niepoprawne obserwacje odrzuca przed rejestracją; błąd zapisu uruchomienia wyzwala sprzątanie sensora.
+     * @returns Początkowy opis zadania, bez czekania na wszystkie próbki.
+     * @throws ApiError 409 dla limitu, 422 dla parametrów lub 503 podczas zamykania.
+     */
     async start(input:SimulationInput) {
       if (closing) throw new ApiError(503, 'Serwer kończy pracę');
       if(jobs.size+pendingStarts>=MAX_CONCURRENT_SIMULATIONS) {
@@ -153,8 +196,8 @@ export function createSimulationsService(
         if (observations) {
           // Odrzucenie przed POST /api/sensors: nie tworzymy czujnika,
           // którego rzeczywiste pomiary nie mogą zostać zapisane.
-          const values=observations.map(point=>point.value);
-          if (values.some(value=>!Number.isFinite(value))) {
+          const values=observations.map( point=>point.value);
+          if (values.some( value=>!Number.isFinite(value))) {
             throw new ApiError(422,'Źródło METAR zwróciło nieprawidłowe wartości temperatury.');
           }
           const observedMin=Math.min(...values);
@@ -189,21 +232,30 @@ export function createSimulationsService(
         return expose(row);
       } finally {pendingStarts--;}
     },
+    /**
+     * Anuluje lokalny worker, oznacza stopping i czeka na jego blok finally ze sprzątaniem.
+     * Dla nieaktywnego lokalnie zadania tylko odczytuje zapisany stan; nie usuwa pomiarów.
+     */
     async stop(id:string) {
       const numeric=parseId(id);
       const job=jobs.get(numeric);
       if(job){
         job.controller.abort();
+        await repo.changeState(numeric,'stopping');
         await job.finished;
       }
       return this.get(numeric);
     },
+    /**
+     * Blokuje kolejne starty, usuwa timer sprzątania i anuluje bieżące zadania.
+     * Czeka na zakończenie ich pracy i rozpoczętego przebiegu kolejki przed oddaniem kontroli.
+     */
     async close() {
       closing = true;
       clearTimeout(cleanupTimer);
       const running=[...jobs.values()];
-      running.forEach(x=>x.controller.abort());
-      await Promise.allSettled(running.map(x=>x.finished));
+      running.forEach( x=>x.controller.abort());
+      await Promise.allSettled(running.map( x=>x.finished));
       await cleanupTask;
     },
   };

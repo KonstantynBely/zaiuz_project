@@ -2,7 +2,7 @@ import { strict as assert } from 'node:assert';
 import test from 'node:test';
 import { createSimulationMonitor } from '../src/features/admin/simulationMonitor.ts';
 
-const flush = () => new Promise(resolve => setImmediate(resolve));
+const flush = () => new Promise( resolve => setImmediate(resolve));
 
 test('series failures survive successful status polls and recover automatically', async t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
@@ -69,8 +69,8 @@ test('disposing the monitor suppresses late series and status responses', async 
   let resolveSeries, rejectRuns;
   const seen = [];
   const monitor = createSimulationMonitor({
-    loadSeries: () => new Promise(resolve => { resolveSeries = resolve; }),
-    loadRuns: () => new Promise((_, reject) => { rejectRuns = reject; }),
+    loadSeries: () => new Promise( resolve => { resolveSeries = resolve; }),
+    loadRuns: () => new Promise( (_, reject) => { rejectRuns = reject; }),
     onSeries: value => seen.push(value), onRuns: value => seen.push(value),
     onSeriesError: error => seen.push(error), onRunsError: error => seen.push(error),
   });

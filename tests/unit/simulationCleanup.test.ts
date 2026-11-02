@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createSimulationsService } from '../../backend/src/modules/simulations/simulations.service.js';
 import type { SimulationRow } from '../../backend/src/modules/simulations/simulations.repository.js';
 
-const flush = () => new Promise<void>(resolve => setImmediate(resolve));
+const flush = () => new Promise<void>( resolve => setImmediate(resolve));
 
 function fixture(failCreate = false) {
   const queue = new Map<string, boolean>();
@@ -23,7 +23,7 @@ function fixture(failCreate = false) {
     count: async () => {},
     get: async () => row,
     requestCleanup: async (sensor: string) => { if (queue.has(sensor)) queue.set(sensor, true); },
-    pendingCleanup: async () => [...queue].filter(([, ready]) => ready).map(([id]) => id),
+    pendingCleanup: async () => [...queue].filter( ([, ready]) => ready).map( ([id]) => id),
   };
   const sensorApi = {
     getSeries: async () => ({ minValue:0, maxValue:100 }),
@@ -74,6 +74,20 @@ test('Nieudany zapis symulacji nie gubi wcześniej zarejestrowanego czujnika', a
     f.recover();
     t.mock.timers.tick(5000);
     await flush();
+    assert.equal(f.queue.size, 0);
+  } finally { await f.service.close(); }
+});
+
+test('Stop przerywa oczekiwanie live i kończy zadanie po wyrejestrowaniu czujnika', async t => {
+  t.mock.method(globalThis, 'fetch', async () => new Response('', { status: 201 }));
+  const f = fixture();
+  f.recover();
+  try {
+    const run = await f.service.start({ seriesId: '1', mode: 'live', pattern: 'random', count: 2, intervalMs: 60_000 });
+    await flush();
+    assert.equal(f.row()?.state, 'running');
+    const stopped = await f.service.stop(run.id);
+    assert.equal(stopped.state, 'stopped');
     assert.equal(f.queue.size, 0);
   } finally { await f.service.close(); }
 });

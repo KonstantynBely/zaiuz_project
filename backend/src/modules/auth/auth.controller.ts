@@ -3,7 +3,11 @@ import { ApiError } from '../../common/errors.js';
 import type { AuthService } from './auth.service.js';
 import type { LoginBody, PasswordBody } from './auth.schema.js';
 
-/** Pobieraj Bearer wyłącznie z nagłówka Authorization. */
+/**
+ * Odczytuje pojedynczy token ze schematu Bearer nagłówka Authorization.
+ * Nie przyjmuje tokenów z URL ani body.
+ * @throws ApiError 401 przy braku lub niepoprawnym nagłówku.
+ */
 export function bearerToken(request: FastifyRequest): string {
   const match = /^Bearer ([^ ]+)$/i.exec(request.headers.authorization ?? '');
   if (!match?.[1]) throw new ApiError(401, 'Wymagany token Bearer');

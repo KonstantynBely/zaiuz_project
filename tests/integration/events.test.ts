@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { hashPassword } from '../../backend/src/modules/auth/auth.service.js';
-import { createPool } from '../../backend/src/database/pool.js';
+import { createTestPool } from '../helpers/testDatabase.js';
 import { buildApp } from '../../backend/src/app.js';
 
 test('SSE: nowy pomiar pojawia się w otwartym strumieniu',async()=>{
-  const pool=createPool();const app=buildApp({pool});
+  const pool=createTestPool();const app=buildApp({pool});
   const name=`sse_test_${Date.now()}_${Math.floor(Math.random()*1e9)}`;
   let adminId:string|null=null;let seriesId:string|null=null;
   const abort=new AbortController();
@@ -36,7 +36,7 @@ test('SSE: nowy pomiar pojawia się w otwartym strumieniu',async()=>{
     const frame=new TextDecoder().decode(incoming.value);
     assert.match(frame,/event: measurement/);
     assert.equal(JSON.parse(frame.split('data: ')[1]!.split('\n')[0]!).value,41);
-    abort.abort();await reader.cancel().catch(()=>{});
+    abort.abort();await reader.cancel().catch( ()=>{});
   } finally {
     abort.abort();
     await app.close();

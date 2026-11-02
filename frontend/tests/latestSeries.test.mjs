@@ -17,12 +17,12 @@ test('latest summary queries every series separately, including sparse series be
       const result = id === 'rare' ? [{ id:'last-rare', seriesId:id, value:5, timestamp:'2020-01-01T00:00:00Z' }] : [];
       return { ok:true, status:200, json:async()=>result };
     };
-    const series=[...Array.from({length:7},(_,i)=>({id:String(i+1)})),{id:'rare'}];
+    const series=[...Array.from({length:7}, (_,i)=>({id:String(i+1)})),{id:'rare'}];
     const result=await fetchLatestForSeries(series);
     assert.equal(requested.length,8);
     assert.equal(result.length,8);
-    assert.equal(result.find(row=>row.seriesId==='rare').measurement.id,'last-rare');
-    assert.equal(result.find(row=>row.seriesId==='1').measurement,null);
+    assert.equal(result.find( row=>row.seriesId==='rare').measurement.id,'last-rare');
+    assert.equal(result.find( row=>row.seriesId==='1').measurement,null);
   } finally {
     globalThis.fetch=original;
   }
@@ -40,9 +40,9 @@ test('a failed series does not discard successful results, including later batch
     };
     const results = await fetchLatestForSeries(Array.from({ length: 8 }, (_, i) => ({ id: String(i + 1) })));
     assert.equal(results.length, 8);
-    assert.match(results.find(row => row.seriesId === '2').error, /503/);
-    assert.equal(results.find(row => row.seriesId === '3').measurement, null);
-    assert.equal(results.find(row => row.seriesId === '8').measurement.id, 'latest-8');
+    assert.match(results.find( row => row.seriesId === '2').error, /503/);
+    assert.equal(results.find( row => row.seriesId === '3').measurement, null);
+    assert.equal(results.find( row => row.seriesId === '8').measurement.id, 'latest-8');
   } finally {
     globalThis.fetch = original;
   }
@@ -79,15 +79,15 @@ test('only failed series are retried and success replaces their error', async t 
       return { ok: true, json: async () => [] };
     };
     stop = loadLatestReadings([{ id: '1' }, { id: '2' }], batch => results.push(batch));
-    await new Promise(resolve => setImmediate(resolve));
-    assert.match(results[0].find(row => row.seriesId === '2').error, /503/);
+    await new Promise( resolve => setImmediate(resolve));
+    assert.match(results[0].find( row => row.seriesId === '2').error, /503/);
     fail = false;
     t.mock.timers.tick(5000);
-    await new Promise(resolve => setImmediate(resolve));
+    await new Promise( resolve => setImmediate(resolve));
     assert.deepEqual(requested, ['1', '2', '2']);
     assert.deepEqual(results[1], [{ seriesId: '2', measurement: null }]);
     t.mock.timers.tick(10000);
-    await new Promise(resolve => setImmediate(resolve));
+    await new Promise( resolve => setImmediate(resolve));
     assert.equal(requested.length, 3);
   } finally {
     stop?.();
@@ -103,10 +103,10 @@ test('disposing latest lookups cancels pending retries', async t => {
   try {
     globalThis.fetch = async () => { requests++; return { ok: false, status: 503 }; };
     stop = loadLatestReadings([{ id: '1' }], () => {});
-    await new Promise(resolve => setImmediate(resolve));
+    await new Promise( resolve => setImmediate(resolve));
     stop();
     t.mock.timers.tick(10000);
-    await new Promise(resolve => setImmediate(resolve));
+    await new Promise( resolve => setImmediate(resolve));
     assert.equal(requests, 1);
   } finally {
     stop?.();

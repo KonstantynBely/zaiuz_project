@@ -11,6 +11,10 @@ export async function measurementsRoutes(app:FastifyInstance,service:Measurement
   app.get<{Params:{measurementId:string}}>('/api/measurements/:measurementId',ctl.get);
   // Uwierzytelnienie urządzenia wykonujemy przed walidacją treści żądania.
   app.post<{Body:MeasurementInput}>('/api/measurements',{
+    /**
+     * Odrzuca brak lub zbyt krótki klucz przed walidacją JSON.
+     * Pełną kontrolę aktywności i przypisania czujnika wykonuje później repozytorium.
+     */
     onRequest: async req => {
       const key=req.headers['x-api-key'];
       if(typeof key!=='string'||key.length<32) {

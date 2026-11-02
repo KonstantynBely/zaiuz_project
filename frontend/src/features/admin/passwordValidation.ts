@@ -1,3 +1,4 @@
+/** Limit bcrypt współdzielony znaczeniowo z backendem; dotyczy bajtów UTF-8, nie liczby znaków. */
 export const MAX_PASSWORD_BYTES = 72;
 const encoder = new TextEncoder();
 

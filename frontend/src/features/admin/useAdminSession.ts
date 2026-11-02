@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { adminApi } from '../../api/admin';
 
+/**
+ * Utrzymuje token wyłącznie w pamięci karty i planuje lokalne wygaśnięcie sesji.
+ * Nie zapisuje sekretu do localStorage; wylogowanie lokalne działa także przy awarii żądania logout.
+ */
 export function useAdminSession(onExpired: () => void) {
   const [session, setSession] = useState<{ token: string; expiresAt: number } | null>(null);
   const login = useCallback((token: string, expiresIn: number) => {
@@ -10,7 +14,7 @@ export function useAdminSession(onExpired: () => void) {
   const logout = useCallback(() => {
     const token = session?.token;
     clear();
-    if (token) void adminApi.logout(token).catch(() => {
+    if (token) void adminApi.logout(token).catch( () => {
       // Local logout still succeeds when the server cannot be reached.
     });
   }, [session, clear]);

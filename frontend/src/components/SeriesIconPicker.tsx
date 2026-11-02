@@ -13,17 +13,21 @@ const seriesIcons = [
 ] satisfies { value: IconName; label: string }[];
 
 export function SeriesIcon({ value, size = 18 }: { value?: string | null; size?: number }) {
-  const selected = seriesIcons.find(item => item.value === value);
+  const selected = seriesIcons.find( item => item.value === value);
   return <Icon name={selected?.value ?? 'layers'} size={size}/>;
 }
 
+/**
+ * Renderuje dostępną grupę radio z wyborem ikony lub jej braku.
+ * useId izoluje nazwy grup, a nieznana dotychczasowa wartość pozostaje możliwa do zachowania.
+ */
 export function SeriesIconPicker({ value, onChange, disabled }: {
   value: string;
   onChange: (value: string) => void;
   disabled: boolean;
 }) {
   const name = useId();
-  const legacy = value !== '' && !seriesIcons.some(item => item.value === value);
+  const legacy = value !== '' && !seriesIcons.some( item => item.value === value);
   const options = [
     { value: '', label: 'Bez ikony' },
     ...seriesIcons,
@@ -32,8 +36,8 @@ export function SeriesIconPicker({ value, onChange, disabled }: {
   return <fieldset className="series-icon-picker" disabled={disabled}>
     <legend>Ikona serii (opcjonalnie)</legend>
     <div className="series-icon-options">
-      {options.map(option => <label className="series-icon-option" key={option.value}>
-        <input type="radio" name={name} value={option.value} checked={value === option.value} onChange={() => onChange(option.value)}/>
+      {options.map( option => <label className="series-icon-option" key={option.value}>
+        <input type="radio" name={name} value={option.value} checked={value === option.value} onChange={ () => onChange(option.value)}/>
         <span>
           {option.value ? <SeriesIcon value={option.value} size={23}/> : <span className="series-icon-none" aria-hidden="true">—</span>}
           <span>{option.label}</span>

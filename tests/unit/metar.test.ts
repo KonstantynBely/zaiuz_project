@@ -19,5 +19,5 @@ test('METAR: odrzucane są braki, błędne wartości, inne stacje i duplikaty cz
   ]);
 });
 test('METAR: nie dopuszczamy uszkodzonej odpowiedzi', () => {
-  assert.throws(() => parseMetarTemperatures(null, 'EPWA'), { status: 503 });
+  assert.throws( () => parseMetarTemperatures(null, 'EPWA'), { status: 503 });
 });

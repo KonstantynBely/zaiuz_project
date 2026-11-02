@@ -15,7 +15,7 @@ test('SSE spoza wskazanego zakresu nie wypiera żadnego z 1000 historycznych pom
   const next = appendStreamMeasurement(original, outside, history, now);
   assert.strictEqual(next, original);
   assert.equal(next.length, 1000);
-  assert.ok(next.some(row => row.id === '1'));
+  assert.ok(next.some( row => row.id === '1'));
 });
 
 test('SSE sprzed i po wybranym terminie jest ignorowane', () => {
@@ -28,7 +28,7 @@ test('SSE w przedziale jest przyjmowane, duplikat nie, a różne serie respektuj
   const first = point('1', '2026-09-01T00:00:00Z');
   const valid = point('2', '2026-09-30T23:59:59.999Z');
   const accepted = appendStreamMeasurement([first], valid, history, now);
-  assert.deepEqual(accepted.map(row => row.id), ['2', '1']);
+  assert.deepEqual(accepted.map( row => row.id), ['2', '1']);
   assert.strictEqual(appendStreamMeasurement(accepted, valid, history, now), accepted);
   assert.strictEqual(appendStreamMeasurement(accepted, point('other', valid.timestamp, '2'), history, now), accepted);
   const hidden = { ...history, hiddenSeriesIds: ['1'] };

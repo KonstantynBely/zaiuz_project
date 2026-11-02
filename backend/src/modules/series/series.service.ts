@@ -9,6 +9,10 @@ function asSeries(row: SeriesRow) {
     ...(row.unit == null ? {} : { unit: row.unit }),
   };
 }
+/**
+ * Wymaga skończonych granic minValue < maxValue.
+ * @throws ApiError 422, zanim niepoprawny zakres trafi do repozytorium.
+ */
 function validateRange(input: SeriesInput) {
   if (!Number.isFinite(input.minValue) || !Number.isFinite(input.maxValue) || input.minValue >= input.maxValue) {
     throw new ApiError(422, 'Wartość minValue musi być mniejsza od maxValue');
@@ -18,6 +22,10 @@ function validateRange(input: SeriesInput) {
 export function createSeriesService(repository: SeriesRepository) {
   return {
     async list() { return (await repository.findAll()).map(asSeries); },
+    /**
+     * Zwraca publiczny opis wskazanej serii.
+     * @throws ApiError 404 dla brakującego zasobu.
+     */
     async get(id: string) {
       const row = await repository.findById(id);
       if (!row) throw new ApiError(404, 'Nie znaleziono serii');
@@ -27,6 +35,10 @@ export function createSeriesService(repository: SeriesRepository) {
       validateRange(input);
       return asSeries(await repository.insert(input));
     },
+    /**
+     * Waliduje zakres i zastępuje pola serii.
+     * @throws ApiError 404 dla braku serii lub 409, gdy zmiana wyklucza zapisane pomiary.
+     */
     async update(id: string, input: SeriesInput) {
       validateRange(input);
       const result = await repository.update(id, input);
@@ -34,6 +46,10 @@ export function createSeriesService(repository: SeriesRepository) {
       if (result === 'conflict') throw new ApiError(409, 'Nowy zakres wyklucza istniejące pomiary');
       return asSeries(result);
     },
+    /**
+     * Usuwa serię i jej zależności zgodnie z kluczami obcymi.
+     * @throws ApiError 404, jeśli seria nie istniała.
+     */
     async remove(id: string) {
       if (!await repository.remove(id)) throw new ApiError(404, 'Nie znaleziono serii');
     },

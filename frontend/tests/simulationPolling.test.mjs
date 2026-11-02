@@ -4,10 +4,10 @@ import { createSimulationPoller } from '../src/features/admin/simulationPolling.
 
 const deferred = () => {
   let resolve, reject;
-  const promise = new Promise((yes,no)=>{resolve=yes;reject=no;});
+  const promise = new Promise( (yes,no)=>{resolve=yes;reject=no;});
   return { promise, resolve, reject };
 };
-const flush = () => new Promise(resolve => setImmediate(resolve));
+const flush = () => new Promise( resolve => setImmediate(resolve));
 
 test('poll cycles never overlap, and next timer starts after completion', async () => {
   const pending = deferred();
@@ -32,7 +32,7 @@ test('late response after mutation cannot overwrite newer state', async () => {
   const states=[];
   const poller=createSimulationPoller({
     load:()=>++requests===1?old.promise:Promise.resolve('new'),
-    apply:v=>states.push(v),fail:()=>{},interval:100000,
+    apply:v=>states.push(v), fail:()=>{},interval:100000,
   });
   const first=poller.poll();
   poller.refresh();
@@ -47,7 +47,7 @@ test('unmount or session replacement ignores late data and 401 errors', async ()
   const d=deferred();
   const states=[],errors=[];
   const poller=createSimulationPoller({
-    load:()=>d.promise,apply:s=>states.push(s),fail:e=>errors.push(e),interval:100000,
+    load:()=>d.promise, apply:s=>states.push(s), fail:e=>errors.push(e),interval:100000,
   });
   const running=poller.poll();
   poller.stop();

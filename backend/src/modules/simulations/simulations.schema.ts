@@ -17,7 +17,6 @@ export interface SimulationParameters {
   station?: MetarStation; source?: 'AWC METAR';
 }
 
-/** Kontrola schematu zapobiega uruchamianiu nieznanych programów przez API. */
 export const startSimulationSchema = {
   type:'object', additionalProperties:false, required:['seriesId','mode','pattern'],
   properties:{

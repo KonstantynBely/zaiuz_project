@@ -1,6 +1,8 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
+// Transformacje React i lokalne proxy zachowujące prefiks /api.
+// Produkcyjne serwowanie statycznego dist i routing API konfiguruje osobno Caddy.
 export default defineConfig({
   plugins: [react()],
   server: {

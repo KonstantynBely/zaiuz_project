@@ -2,6 +2,10 @@ import type { Series } from '../../api/client';
 import type { Simulation } from '../../api/admin';
 import { createSimulationPoller } from './simulationPolling.ts';
 
+/**
+ * Uruchamia dwa niezależne pollery: serie pobiera do pierwszego sukcesu, a statusy cyklicznie.
+ * Błędy raportuje osobno; zwrócone stop anuluje oba źródła i ich timery.
+ */
 export function createSimulationMonitor(options: {
   loadSeries: (signal: AbortSignal) => Promise<Series[]>;
   loadRuns: (signal: AbortSignal) => Promise<Simulation[]>;

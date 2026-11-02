@@ -12,24 +12,47 @@ const projection='id::text,series_id::text,sensor_id::text,state,parameters,acce
 
 export function createSimulationsRepository(pool: Pool) {
   return {
+    /**
+     * Pobiera wszystkie aktywne zadania oraz maksymalnie 100 najnowszych zakończonych.
+     * Limit historii nie może ukryć nadal działającej symulacji; wynik jest malejący po ID.
+     */
     async list():Promise<SimulationRow[]> {
-      return (await pool.query<SimulationRow>(`SELECT ${projection} FROM simulation_runs ORDER BY id DESC LIMIT 100`)).rows;
+      return (await pool.query<SimulationRow>(
+        `SELECT ${projection} FROM simulation_runs
+         WHERE state IN ('pending','running','stopping') OR id IN (
+           SELECT id FROM simulation_runs WHERE state IN ('stopped','completed','failed')
+           ORDER BY id DESC LIMIT 100
+         ) ORDER BY id DESC`,
+      )).rows;
     },
+    /**
+     * Odczytuje uruchomienie po ID.
+     * @returns Wiersz z parametrami i licznikami lub null.
+     */
     async get(id:string):Promise<SimulationRow|null> {
       return (await pool.query<SimulationRow>(`SELECT ${projection} FROM simulation_runs WHERE id=$1`,[id])).rows[0]??null;
     },
+    /**
+     * Zapisuje uruchomienie w stanie pending z parametrami JSONB i odczytuje pełny wiersz.
+     * Czujnik musi zostać wcześniej zarejestrowany przez REST.
+     */
     async create(seriesId:string,sensorId:string,params:SimulationParameters):Promise<SimulationRow> {
       const result=await pool.query<{id:string}>(
         `INSERT INTO simulation_runs(series_id,sensor_id,state,parameters)
          VALUES($1,$2,'pending',$3::jsonb) RETURNING id::text`,[seriesId,sensorId,JSON.stringify(params)]);
       return (await this.get(result.rows[0]!.id))!;
     },
+    /**
+     * Aktualizuje stan, odpowiednie daty i opcjonalną przyczynę błędu.
+     * Nie pozwala, by spóźnione stopping nadpisało stan już zakończonego zadania.
+     */
     async changeState(id:string,state:SimulationState,reason?:string) {
       await pool.query(
         `UPDATE simulation_runs SET state=$2,
           started_at=CASE WHEN $2='running' THEN COALESCE(started_at,now()) ELSE started_at END,
           finished_at=CASE WHEN $2 IN ('stopped','completed','failed') THEN now() ELSE finished_at END,
-          error_summary=COALESCE($3,error_summary) WHERE id=$1`,[id,state,reason??null]);
+          error_summary=COALESCE($3,error_summary) WHERE id=$1
+          AND ($2 <> 'stopping' OR state IN ('pending','running'))`,[id,state,reason??null]);
     },
     async count(id:string,accepted:boolean) {
       await pool.query(
@@ -39,15 +62,22 @@ export function createSimulationsRepository(pool: Pool) {
     async requestCleanup(sensorId: string) {
       await pool.query('UPDATE simulation_sensor_cleanup SET ready=true WHERE sensor_id=$1', [sensorId]);
     },
+    /**
+     * Wybiera do 20 sensorów gotowych do sprzątania lub powiązanych z zakończonym zadaniem.
+     * Drugi warunek pozwala ponowić sprzątanie nawet po błędzie ustawiania ready.
+     */
     async pendingCleanup(): Promise<string[]> {
       const rows = await pool.query<{sensor_id:string}>(
         `SELECT q.sensor_id::text FROM simulation_sensor_cleanup q
          WHERE q.ready=true OR EXISTS (SELECT 1 FROM simulation_runs r
            WHERE r.sensor_id=q.sensor_id AND r.state IN ('failed','completed','stopped'))
          ORDER BY q.sensor_id LIMIT 20`);
-      return rows.rows.map(row => row.sensor_id);
+      return rows.rows.map( row => row.sensor_id);
     },
-    /** Called before accepting requests: no worker from the previous process survives. */
+    /**
+     * Przed otwarciem HTTP oznacza niedokończone zadania jako failed i cofa klucze sensorów z kolejki.
+     * Operacja jest transakcyjna i obejmuje całą kolejkę bazy; zakłada jeden proces wykonawcy.
+     */
     async recoverOrphans() {
       await transaction(pool, async client => {
         await client.query(`

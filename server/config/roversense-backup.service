@@ -4,6 +4,7 @@ Requires=postgresql@17-main.service
 After=postgresql@17-main.service
 
 [Service]
+# Backup korzysta z lokalnej autoryzacji konta postgres i zapisuje tylko w dozwolonej ścieżce.
 Type=oneshot
 User=postgres
 Group=postgres

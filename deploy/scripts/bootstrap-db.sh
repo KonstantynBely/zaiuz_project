@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# Przygotowanie roli i bazy roversense w działającym lokalnym PostgreSQL; wymaga root.
+# Istniejące hasło roli pozostaje bez zmian; pierwszy wybór hasła wymaga terminala.
+# Skrypt sprawdza właściciela istniejącej bazy i zakłada rozszerzenie TimescaleDB.
+# Nie uruchamia migracji schematu ani seeda administratora aplikacji.
 set -euo pipefail
 
 # Inicjalizacja nowej bazy RoverSense bez hasel w kodzie i logach.

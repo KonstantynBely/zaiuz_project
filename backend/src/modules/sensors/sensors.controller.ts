@@ -7,6 +7,10 @@ export function createSensorsController(service:SensorsService) {
   return {
     async list() { return service.list(); },
     async get(req:FastifyRequest<{Params:{sensorId:string}}>) { return service.get(parseId(req.params.sensorId)); },
+    /**
+     * Rejestruje czujnik, przekazuje znacznik workera i zwraca jednorazowy klucz w odpowiedzi 201.
+     * Ustawia no-store i Location, aby odpowiedź zawierająca sekret nie była buforowana.
+     */
     async register(req:FastifyRequest<{Body:SensorInput}>, reply:FastifyReply) {
       const sensor=await service.register(req.body, req.simulationWorker);
       reply.header('Cache-Control','no-store');

@@ -1,15 +1,20 @@
 import type { ServerResponse } from 'node:http';
 
+/** Publiczny payload zdarzenia SSE, bez sekretów i wewnętrznych pól bazy. */
 export interface MeasurementEvent {
   id:string;seriesId:string;value:number;timestamp:string;sensorId?:string;
 }
 
-/** Nadawanie zdarzeń do podłączonych przeglądarek bez dostępu do sekretów czujników. */
+/** Tworzy procesowy rejestr otwartych odpowiedzi SSE; nie odtwarza historycznych zdarzeń. */
 export function createEventsService() {
   const clients=new Set<ServerResponse>();
   return {
     register(response:ServerResponse) { clients.add(response); },
     unregister(response:ServerResponse) { clients.delete(response); },
+    /**
+     * Serializuje publiczny pomiar do ramki SSE i rozsyła ją aktywnym klientom.
+     * Zamyka odbiorców z buforem powyżej 64 KiB, aby wolny klient nie zwiększał pamięci bez ograniczeń.
+     */
     publish(measurement:MeasurementEvent) {
       const frame=`event: measurement\ndata: ${JSON.stringify(measurement)}\n\n`;
       for(const response of clients) {

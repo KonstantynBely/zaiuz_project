@@ -4,6 +4,8 @@ After=network.target postgresql@17-main.service
 Requires=postgresql@17-main.service
 
 [Service]
+# Proces działa jako konto usługowe; sekrety pochodzą z pliku poza repozytorium.
+# preClose Fastify zamyka SSE i symulacje przed zakończeniem puli PostgreSQL.
 Type=simple
 User=roversense
 Group=roversense

@@ -1,9 +1,11 @@
+/* Wspólne formularze i karty administracji; komunikaty sukcesu/błędu mają także treść tekstową.
+   Układy edytorów zwijają się do jednej kolumny, a reduced-motion wyłącza animację wejścia. */
 .nav-secondary .nav-link { width: 100%; text-align: left; font-family: inherit; }
 .admin-view { color: #f1e9dd; animation: admin-fade .24s ease; }
 @keyframes admin-fade { from {opacity: .65; transform: translateY(4px)} to {opacity: 1; transform: translateY(0)} }
 .admin-heading { padding: 4px 0 22px; }
 .admin-heading h1 { font: 600 clamp(26px,3.2vw,34px)/1.2 'Space Grotesk',sans-serif; letter-spacing: -.9px; margin: 0 0 8px; }
-.admin-heading p:not(.eyebrow) { font-size: 13px; line-height: 1.7; color: #a8b5b7; max-width: 650px; margin: 0; }
+.admin-heading p { font-size: 13px; line-height: 1.7; color: #a8b5b7; max-width: 650px; margin: 0; }
 .admin-heading-row { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
 .admin-layout { display: grid; grid-template-columns: 1fr; gap: 20px; align-items: start; }
 .admin-layout.with-editor { grid-template-columns: minmax(0,1.18fr) minmax(300px,.82fr); }

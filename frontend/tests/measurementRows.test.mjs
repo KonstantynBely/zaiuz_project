@@ -37,7 +37,7 @@ test('pomiary są sortowane od najnowszego bez gubienia filtrów serii', () => {
     { id: 'discard', seriesId: '2', value: 2, timestamp: '2026-10-22T00:00:00.000Z' },
     { id: 'new', seriesId: '1', value: 3, timestamp: '2026-10-21T00:00:00.000Z' },
   ]);
-  assert.deepEqual(rows.map(row => row.cells.get('1')?.id), ['new', 'old']);
+  assert.deepEqual(rows.map( row => row.cells.get('1')?.id), ['new', 'old']);
 });
 
 test('brak pomiarów zwraca pustą tabelę', () => {

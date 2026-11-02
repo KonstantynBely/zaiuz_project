@@ -2,7 +2,6 @@ import type { FastifyInstance, preHandlerHookHandler } from 'fastify';
 import type { SeriesService } from './series.service.js';
 import type { SeriesInput } from './series.schema.js';
 import { seriesBodySchema } from './series.schema.js';
-import { pathIdSchema } from '../../common/validation.js';
 import { createSeriesController } from './series.controller.js';
 
 export async function seriesRoutes(app: FastifyInstance, service: SeriesService, auth?: preHandlerHookHandler): Promise<void> {

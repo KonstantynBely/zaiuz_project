@@ -16,19 +16,16 @@
 
 Do działania aplikacji potrzebne są porty TCP 22 (SSH), 80 (HTTP i obsługa certyfikatów TLS) oraz 443 (HTTPS).
 
-### Sieć i SSH — wynik kontroli z 19.10.2026
+### Sieć i SSH
 
-Na podstawie poleceń `ss`, `iptables`, `ip6tables` i `sshd -T` uruchomionych na maszynie:
+Konfiguracja dostępu do hosta obejmuje porty publiczne, reguły systemu i reguły sieci OCI. Założenia dla tego wdrożenia:
 
-- Caddy nasłuchuje na portach 80/443, a SSH na 22; backend (3000) i PostgreSQL (5432) nasłuchują tylko na `127.0.0.1`.
-- Reguły `iptables INPUT` dla IPv4 dopuszczają połączenia nawiązane, ICMP, ruch loopback i TCP 22/80/443; pozostałe nowe połączenia odrzucają.
-- UFW nie jest zainstalowany; filtrowanie IPv4 jest skonfigurowane bezpośrednio w `iptables`.
-- `ip6tables INPUT` ma politykę `ACCEPT`, bez pokazanych reguł filtrujących IPv6. Nie weryfikowano innych mechanizmów filtracji IPv6.
-- `rpcbind` nasłuchuje na porcie 111 w IPv4 i IPv6; reguły IPv4 INPUT odrzucają nowe zewnętrzne połączenia na ten port.
-- SSH: logowanie hasłem i keyboard-interactive są wyłączone, logowanie kluczem włączone; `PermitRootLogin without-password` zezwala na logowanie root kluczem.
-- `systemctl --failed` nie wykazał uszkodzonych jednostek.
+- Publiczny ruch aplikacji trafia do Caddy przez 80/443; SSH używa portu 22 i uwierzytelniania kluczem.
+- Backend i PostgreSQL pozostają na loopback; porty 3000 i 5432 nie są wystawiane publicznie.
+- Polityka filtrowania obejmuje IPv4 i IPv6 oraz reguły OCI VCN/NSG/security list.
+- Usługi niezwiązane z aplikacją nie wymagają otwierania dodatkowych portów publicznych.
 
-RPC, IPv6 i SSH pozostawiono bez dalszych zmian. **Nie zweryfikowano reguł OCI VCN/NSG/security list**, dlatego test konfiguracji VM nie zastępuje sprawdzenia polityki ruchu sieciowego w panelu Oracle.
+Do diagnostyki konfiguracji hosta służą `ss -lntup`, `iptables -S`, `ip6tables -S`, `sshd -T` i `systemctl --failed`. Reguły sieci OCI są zarządzane osobno w panelu dostawcy. Ta sekcja opisuje założenia dostępu, a nie wynik audytu konkretnej VM.
 
 ## Katalogi i konta
 
@@ -107,7 +104,7 @@ Gotowa paczka trafia przez SSH do `/srv/roversense/incoming/<40-znakowy SHA>`. S
 
 GitHub Actions używa sekretów `ROVERSENSE_SSH_KEY` i `ROVERSENSE_KNOWN_HOSTS`. Klucze prywatne i zawartość sekretów nie są przechowywane w repozytorium.
 
-Workflow jest uruchamiany ręcznie (`workflow_dispatch`) albo po wypchnięciu zmian do `main` (po scaleniu konfiguracji CD). Wdrożenie wymaga zaliczenia zadań CI. Gałąź robocza może być wdrożona ręcznie do weryfikacji przed scaleniem.
+Workflow jest uruchamiany ręcznie (`workflow_dispatch`) albo po wypchnięciu zmian do `main`. Wdrożenie wymaga zaliczenia zadań CI. Ręczne uruchomienie z gałęzi roboczej również może wdrożyć ją na produkcję; nie jest osobnym środowiskiem testowym.
 
 ## Kontrola wydań i powrót do poprzedniej wersji
 
@@ -145,11 +142,15 @@ readlink -f /srv/roversense/current
 
 Prawidłowa odpowiedź API: `{"status":"ok"}`. Dla strony głównej oczekiwane HTTP 200.
 
+`/api/health` potwierdza działanie procesu HTTP. Backend sprawdza bazę przy starcie; odpowiedź tego endpointu nie potwierdza jej bieżącej dostępności. Wykonawca symulacji i SSE są przewidziane dla jednej instancji backendu, zgodnie z jednostką systemd. Uruchomienie wielu instancji wymaga osobnej koordynacji zadań i zdarzeń.
+
 ## Kopie zapasowe i bezpieczeństwo
 
 Baza PostgreSQL jest przechowywana niezależnie od katalogów wydań. Przywrócenie kodu do poprzedniej wersji nie oznacza odzyskania danych z bazy.
 
-Na serwerze utworzono prywatny katalog `/var/backups/roversense/postgresql` (właściciel `postgres`, tryb `0700`) oraz wykonano pierwszy ręczny `pg_dump -Fc` i `pg_dumpall --globals-only` (bez testu odtworzenia). Skrypt [scripts/roversense-backup](scripts/roversense-backup) ma tworzyć pełną kopię bazy i ról z sumami SHA-256 oraz usuwać lokalne kopie starsze niż 14 dni. Timer [config/roversense-backup.timer](config/roversense-backup.timer) jest włączony (`active (waiting)`), z uruchomieniem codziennie o **02:30 UTC**; pierwsza planowana próba to 20.10.2026. **Nie potwierdzono jeszcze wykonania backupu przez timer ani możliwości odtworzenia danych.** Backup pozostaje wyłącznie na tej samej maszynie. Kopia poza serwerem, test odtworzenia, audyt zapór OCI/UFW oraz konto administratora pozostają do zrobienia.
+Skrypt [scripts/roversense-backup](scripts/roversense-backup) zapisuje pełną kopię bazy i ról z sumami SHA-256 w prywatnym katalogu `/var/backups/roversense/postgresql` (właściciel `postgres`, tryb `0700`) i usuwa kopie starsze niż 14 dni. Timer [config/roversense-backup.timer](config/roversense-backup.timer) przewiduje uruchomienie codziennie o 02:30 według strefy czasowej serwera. Wymaga instalacji i włączenia na VM. Backup w tej lokalizacji pozostaje na tej samej maszynie.
+
+Backup lokalny obejmuje bazę i role. Ochrona przed utratą całej VM wymaga przechowywania kopii również poza nią. Integralność plików, poprawność odtworzenia i uruchomienie aplikacji po odtworzeniu są odrębnymi kontrolami.
 
 ### Kontrola backupów
 
@@ -164,22 +165,22 @@ Aby sprawdzić sumy kontrolne plików wybranej kopii, należy podstawić jej rze
 
 ```bash
 sudo -u postgres bash -c '
-  cd /var/backups/roversense/postgresql/backup-20261019T183135Z
+  cd /var/backups/roversense/postgresql/NAZWA_WYBRANEJ_KOPII
   sha256sum -c SHA256SUMS
 '
 ```
 
-W pierwszym ręcznym backupie `pg_dump` zgłosił ostrzeżenie TimescaleDB dotyczące `continuous_agg`, ale zakończył się sukcesem. Polecenie `pg_restore -l` generuje tylko spis obiektów w archiwum — nie jest testem odzyskiwania danych. Pierwsze wykonanie timera, odtworzenie bazy i zgodność plików z archiwum nie zostały jeszcze potwierdzone.
+Polecenie `pg_restore -l` generuje spis obiektów w archiwum. Test odzyskiwania danych polega na odtworzeniu kopii w osobnym środowisku i sprawdzeniu odczytu aplikacji; sama lista obiektów ani zgodne sumy plików go nie zastępują.
 
 ### Odtworzenie środowiska po awarii VM
 
-Poniższa kolejność przedstawia wymagane czynności, a nie przetestowany, automatyczny instalator kompletnego serwera:
+Kolejność czynności przy przygotowaniu nowej VM i odtworzeniu danych:
 
 1. Utworzyć nową maszynę Ubuntu 24.04 na ARM64. Skonfigurować sieć OCI, SSH, DNS i dostęp przez 80/443 zgodnie z potrzebami aplikacji.
 2. Zainstalować Node.js 24 i Caddy oraz PostgreSQL 17 z TimescaleDB. Skrypty `deploy/scripts/install-db.sh` i `bootstrap-db.sh` opisują przygotowanie **nowej** bazy; nie uruchamiać ponownie instalatora bez analizy istniejącego środowiska.
 3. Odtworzyć konta `roversense` (usługowe, bez logowania) i `roversense-deploy` (SSH z kluczem), katalogi `/srv/roversense/incoming` i `/srv/roversense/releases`, odpowiednie prawa dostępu i konfigurację sudo.
 4. Skopiować wzorce konfiguracji z `server/config/` oraz skrypt `server/scripts/roversense-backup` do ścieżek wskazanych w tabeli powyżej. Przywrócić `/etc/roversense/backend.env` i klucze SSH z bezpiecznego źródła poza repozytorium. Załadować jednostki przez `systemctl daemon-reload` i sprawdzić Caddy.
-5. Przed uruchomieniem aplikacji odtworzyć role i bazę PostgreSQL z **zweryfikowanej** kopii, stosując właściwą procedurę dla TimescaleDB i kompatybilnych wersji. **Procedury odtwarzania nie przetestowano na tym środowisku.**
+5. Przed uruchomieniem aplikacji odtworzyć role i bazę PostgreSQL z kopii o sprawdzonej integralności, stosując procedurę dla TimescaleDB i kompatybilnych wersji.
 6. Uruchomić wdrożenie gotowych artefaktów z GitHub Actions, sprawdzić migracje, `/api/health`, HTTPS, prawa katalogów i działanie timera backupu.
 
-Obecne lokalne backupy nie chronią przed utratą całej VM. Kopia poza serwerem i test rzeczywistego odtworzenia pozostają do wykonania.
+Po odtworzeniu potwierdzić odczyt serii i pomiarów, logowanie na koncie testowym oraz dostępność HTTPS. Kopie i katalogi wydań mają niezależną retencję; usunięcie starszego wydania nie może usuwać danych bazy ani jej backupów.
