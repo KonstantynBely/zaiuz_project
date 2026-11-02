@@ -20,21 +20,21 @@ export function loadLatestReadings(
       results = await fetchLatestForSeries(pending, controller.signal);
     } catch (reason) {
       if (controller.signal.aborted) return;
-      results = pending.map(/** Tworzy wynik błędu przypisany do jednej serii po nieudanym odczycie. */ item => ({
+      results = pending.map( item => ({
         seriesId: String(item.id),
         error: reason instanceof Error ? reason.message : 'Nie udało się pobrać odczytu.',
       }));
     }
     if (controller.signal.aborted) return;
     onResults(results);
-    const failed = new Set(results.filter(/** Wybiera wyniki nieudanych odczytów wymagające ponowienia. */ result => result.error !== undefined).map(/** Wyodrębnia identyfikator do klucza porównania, filtra lub zbioru wyników. */ result => result.seriesId));
+    const failed = new Set(results.filter( result => result.error !== undefined).map( result => result.seriesId));
     if (failed.size) {
-      timer = setTimeout(/** Ponawia odczyty wyłącznie serii, które poprzednio zgłosiły błąd. */ () => { void load(pending.filter(/** Wybiera do ponowienia tylko serie nadal oznaczone jako błędne. */ item => failed.has(String(item.id)))); }, 5000);
+      timer = setTimeout( () => { void load(pending.filter( item => failed.has(String(item.id)))); }, 5000);
     }
   }
 
   void load(series);
-  return /** Anuluje żądania ostatnich odczytów i usuwa timer ponowienia. */ () => {
+  return () => {
     controller.abort();
     clearTimeout(timer);
   };

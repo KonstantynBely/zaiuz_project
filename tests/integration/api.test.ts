@@ -4,7 +4,6 @@ import { hashPassword } from '../../backend/src/modules/auth/auth.service.js';
 import { createTestPool } from '../helpers/testDatabase.js';
 import { buildApp } from '../../backend/src/app.js';
 
-/** Sprawdza scenariusz: API: logowanie, serie, czujniki, pomiary i uprawnienia na TimescaleDB. */
 test('API: logowanie, serie, czujniki, pomiary i uprawnienia na TimescaleDB',async()=>{
   const pool=createTestPool();
   const app=buildApp({pool});
@@ -16,7 +15,6 @@ test('API: logowanie, serie, czujniki, pomiary i uprawnienia na TimescaleDB',asy
       'INSERT INTO admins(username,password_hash) VALUES($1,$2) RETURNING id::text',
       [unique,await hashPassword('secret-for-tests-2026')]);
     adminId=inserted.rows[0]!.id;
-    /** Wysyła żądanie przez Fastify.inject do instancji testowej bez otwierania portu. */
     const call=(method:'GET'|'POST'|'PUT'|'DELETE',url:string,token?:string,payload?:object)=>app.inject({
       method,url,headers:{...(token?{authorization:`Bearer ${token}`}:{})},
       ...(payload===undefined?{}:{payload}),
@@ -50,7 +48,6 @@ test('API: logowanie, serie, czujniki, pomiary i uprawnienia na TimescaleDB',asy
     assert.equal(JSON.stringify(sensors.json()).includes(key),false);
     const noKey=await call('POST','/api/measurements',undefined,{value:12});
     assert.equal(noKey.statusCode,401);
-    /** Wysyła testowy pomiar z wybranym kluczem przez Fastify.inject. */
     const post=(payload:object,k=key)=>app.inject({method:'POST',url:'/api/measurements',headers:{'x-api-key':k},payload});
     assert.equal((await post({value:-41})).statusCode,422);
     assert.equal((await post({value:20,timestamp:new Date(Date.now()+3600000).toISOString()})).statusCode,422);

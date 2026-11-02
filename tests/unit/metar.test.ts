@@ -2,7 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parseMetarTemperatures } from '../../backend/src/modules/simulations/metar.source.js';
 
-/** Sprawdza scenariusz: METAR: odrzucane są braki, błędne wartości, inne stacje i duplikaty czasu. */
 test('METAR: odrzucane są braki, błędne wartości, inne stacje i duplikaty czasu', () => {
   const timestamp = Math.floor(Date.now() / 1000) - 7200;
   const values = parseMetarTemperatures([
@@ -19,7 +18,6 @@ test('METAR: odrzucane są braki, błędne wartości, inne stacje i duplikaty cz
     { value: 12.4, timestamp: new Date((timestamp + 3600) * 1000).toISOString() },
   ]);
 });
-/** Sprawdza scenariusz: METAR: nie dopuszczamy uszkodzonej odpowiedzi. */
 test('METAR: nie dopuszczamy uszkodzonej odpowiedzi', () => {
-  assert.throws(/** Wykonuje niedozwolone wywołanie, którego synchroniczny wyjątek jest przedmiotem asercji. */ () => parseMetarTemperatures(null, 'EPWA'), { status: 503 });
+  assert.throws( () => parseMetarTemperatures(null, 'EPWA'), { status: 503 });
 });

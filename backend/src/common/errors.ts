@@ -22,12 +22,12 @@ const titles: Record<number, string> = {
  * Błędy walidacji mapuje na 400, zły format na 415, a błędy serwera loguje bez ujawniania stosu w odpowiedzi.
  */
 export function registerErrorHandling(app: FastifyInstance): void {
-  app.setNotFoundHandler(/** Zwraca 404 w formacie Problem Details dla ścieżki nieobsługiwanej przez aplikację. */ (_request, reply) => {
+  app.setNotFoundHandler( (_request, reply) => {
     reply.code(404).type('application/problem+json').send({
       type: 'about:blank', title: titles[404], status: 404,
     });
   });
-  app.setErrorHandler(/** Normalizuje wyjątek do bezpiecznej odpowiedzi Problem Details i loguje wewnętrzne błędy serwera. */ (error: FastifyError | ApiError, request, reply) => {
+  app.setErrorHandler( (error: FastifyError | ApiError, request, reply) => {
     let status = error instanceof ApiError ? error.status : error.statusCode ?? 500;
     if (!(error instanceof ApiError) && error.validation) status = 400;
     if (!(error instanceof ApiError) && error.code === 'FST_ERR_CTP_INVALID_MEDIA_TYPE') status = 415;
@@ -48,10 +48,10 @@ export function registerErrorHandling(app: FastifyInstance): void {
  */
 export function acceptsJson(value: string | undefined): boolean {
   if (!value) return true;
-  return value.split(',').some(/** Wyszukuje parametr wagi q danego zakresu nagłówka Accept. */ part => {
+  return value.split(',').some( part => {
     const [type, ...options] = part.trim().toLowerCase().split(';');
     if (!['*/*', 'application/*', 'application/json', 'application/problem+json'].includes(type ?? '')) return false;
-    const q = options.find(/** Wyszukuje parametr wagi q danego zakresu nagłówka Accept. */ x => x.trim().startsWith('q='));
+    const q = options.find( x => x.trim().startsWith('q='));
     return !q || Number(q.trim().slice(2)) > 0;
   });
 }

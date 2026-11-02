@@ -5,15 +5,14 @@ import { createTestPool } from '../helpers/testDatabase.js';
 import { createAuthRepository } from '../../backend/src/modules/auth/auth.repository.js';
 import { createAuthService, hashPassword } from '../../backend/src/modules/auth/auth.service.js';
 
-/** Sprawdza scenariusz: PostgreSQL: token sprawdzony przed zmianą hasła nie może zostać zapisany po zmianie. */
 test('PostgreSQL: token sprawdzony przed zmianą hasła nie może zostać zapisany po zmianie', async () => {
   const pool = createTestPool();
   const repository = createAuthRepository(pool);
   let id: string | undefined;
   let release!: () => void;
   let reached!: () => void;
-  const gate = new Promise<void>(/** Udostępnia sterowane zakończenie operacji asynchronicznej, potrzebne do odtworzenia wyścigu w teście. */ resolve => { release = resolve; });
-  const ready = new Promise<void>(/** Udostępnia sterowane zakończenie operacji asynchronicznej, potrzebne do odtworzenia wyścigu w teście. */ resolve => { reached = resolve; });
+  const gate = new Promise<void>( resolve => { release = resolve; });
+  const ready = new Promise<void>( resolve => { reached = resolve; });
   const username = `auth_race_${Date.now()}_${Math.random().toString(36).slice(2)}`;
   try {
     const oldHash = await hashPassword('old-concurrency-password');
@@ -24,7 +23,6 @@ test('PostgreSQL: token sprawdzony przed zmianą hasła nie może zostać zapisa
       createHash('sha256').update(token).digest('hex'), new Date(Date.now() + 60000)), true);
     const service = createAuthService({
       ...repository,
-      /** Steruje testowym zapisem sesji, w tym bramką odtwarzającą wyścig ze zmianą hasła. */
       storeToken: async (...args) => { reached(); await gate; return repository.storeToken(...args); },
     });
     const rejected = assert.rejects(service.login({ username, password:'old-concurrency-password' }), { status:401 });

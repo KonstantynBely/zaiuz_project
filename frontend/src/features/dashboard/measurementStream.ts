@@ -1,6 +1,5 @@
 import type { Measurement } from '../../api/client';
 
-/** Dostępne filtry czasu: wszystkie dane, przesuwane okno albo własny domknięty przedział. */
 export type MeasurementRange = 'all' | '24h' | '7d' | '30d' | 'custom';
 
 /** Migawka filtrów dla jednej generacji telemetrii; rozróżnia serie znane i ukryte. */
@@ -12,7 +11,6 @@ export interface StreamFilter {
   availableSeriesIds: readonly string[];
 }
 
-/** Sprawdza obecność ID, skończoną wartość i parsowalny czas przed scalaniem danych REST/SSE. */
 function validMeasurement(item: Measurement | null | undefined): item is Measurement {
   return !!item && item.id != null && item.seriesId != null &&
     typeof item.value === 'number' && Number.isFinite(item.value) &&
@@ -79,11 +77,10 @@ export function appendStreamMeasurement(
   limit = 1000,
 ): Measurement[] {
   if (!matchesStreamFilter(item, filter, now) ||
-    previous.some(/** Dopasowuje identyfikatory jako tekst, aby obsłużyć liczbowe i tekstowe ID kontraktu. */ previousItem => String(previousItem.id) === String(item.id))) return previous;
+    previous.some( previousItem => String(previousItem.id) === String(item.id))) return previous;
   return reconcileMeasurements(previous, [item], filter, now, limit);
 }
 
-/** Wybiera nowszą poprawną próbkę według czasu i ID; błędna lub starsza próbka nie usuwa poprzedniej. */
 export function preferLatest(
   previous: Measurement | null | undefined, incoming: Measurement,
 ): Measurement | null | undefined {
@@ -101,7 +98,6 @@ export class TelemetryReconciler {
   private generation = 0;
   /** Bufor zdarzeń odebranych podczas REST, podzielony na serie, z numerem właściciela odczytu. */
   private pending: { generation: number; events: Map<string, Measurement[]> } | null = null;
-  /** Ostatnia uporządkowana i ograniczona migawka danych widocznych w UI. */
   private rows: Measurement[] = [];
   /** Filtr aktualnej generacji; jego lista serii zostaje uzupełniona przez autorytatywny REST. */
   private filter: StreamFilter = {
@@ -151,13 +147,11 @@ export class TelemetryReconciler {
     return this.rows;
   }
 
-  /** Ponownie stosuje filtr czasowy do przechowywanych wierszy, usuwając wygasłe próbki okna. */
   visible(now = Date.now()): Measurement[] {
     this.rows = reconcileMeasurements(this.rows, [], this.filter, now);
     return this.rows;
   }
 
-  /** Unieważnia trwający REST i jego bufor zdarzeń; zachowuje już widoczne wiersze. */
   invalidate(): void {
     ++this.generation;
     this.pending = null;

@@ -14,17 +14,15 @@ export function createSimulationPoller<T>(options: {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let refreshRequested = false;
 
-  /** Usuwa zaplanowany cykl i zeruje referencję do timera. */
   function clearTimer() {
     if (timer !== null) clearTimeout(timer);
     timer = null;
   }
 
-  /** Planuje następny cykl po zakończeniu bieżącego; nie planuje pracy po stop(). */
   function schedule() {
     if (disposed) return;
     clearTimer();
-    timer = setTimeout(/** Rozpoczyna następny cykl odpytywania po upływie interwału. */ () => { void poll(); }, options.interval ?? 2500);
+    timer = setTimeout( () => { void poll(); }, options.interval ?? 2500);
   }
 
   /**
@@ -57,7 +55,6 @@ export function createSimulationPoller<T>(options: {
     inFlight?.abort();
   }
 
-  /** Unieważnia poprzedni wynik i żąda najbliższego możliwego odczytu bez równoległych cykli. */
   function refresh() {
     invalidate();
     clearTimer();
@@ -65,7 +62,6 @@ export function createSimulationPoller<T>(options: {
     else void poll();
   }
 
-  /** Trwale dezaktywuje poller, anuluje żądanie i usuwa oczekujące odświeżenie oraz timer. */
   function stop() {
     disposed = true;
     invalidate();

@@ -20,17 +20,14 @@ export interface Measurement {
   sensorId?: string | number;
 }
 
-/** Odczytuje publiczny stan procesu API; opcjonalny sygnał anuluje żądanie. */
 export function fetchHealth(signal?: AbortSignal) {
   return request<{ status: 'ok' }>('/api/health', { signal });
 }
 
-/** Pobiera publiczną listę serii bez tokenu administratora. */
 export function fetchSeries(signal?: AbortSignal) {
   return request<Series[]>('/api/series', { signal });
 }
 
-/** Opcjonalne serie i granice czasu przesyłane przez klienta do odczytu REST. */
 export interface MeasurementFilters { from?: string; to?: string; series?: Array<string | number> }
 /**
  * Pobiera do 1000 najnowszych pomiarów wybranych serii i domkniętego zakresu dat.
@@ -59,7 +56,7 @@ export async function fetchLatestForSeries(
 ): Promise<LatestSeriesResult[]> {
   const results: LatestSeriesResult[] = [];
   for (let index = 0; index < series.length; index += 6) {
-    const batch = await Promise.all(series.slice(index, index + 6).map(/** Pobiera najnowszą próbkę jednej serii i izoluje jej błąd od pozostałych wyników partii. */ async item => {
+    const batch = await Promise.all(series.slice(index, index + 6).map( async item => {
       const id = String(item.id);
       const query = new URLSearchParams({ sort: '-timestamp', limit: '1', series: id });
       try {

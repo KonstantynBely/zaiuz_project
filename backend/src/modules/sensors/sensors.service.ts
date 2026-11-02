@@ -4,9 +4,7 @@ import type { SensorsRepository, SensorRow } from './sensors.repository.js';
 import type { SensorInput } from './sensors.schema.js';
 import { parseId } from '../../common/validation.js';
 
-/** Wylicza SHA-256 losowego klucza czujnika przed zapisaniem go w bazie. */
 export const keyHash = (key:string) => createHash('sha256').update(key).digest('hex');
-/** Mapuje wiersz na opis urządzenia bez sekretów; opcjonalną datę ostatniego odczytu pomija, gdy jej brak. */
 function toSensor(row:SensorRow) {
   return {
     id: row.id, name: row.name, seriesId: row.series_id,
@@ -14,10 +12,8 @@ function toSensor(row:SensorRow) {
     ...(row.last_measurement_at ? { lastMeasurementAt: row.last_measurement_at.toISOString() } : {}),
   };
 }
-/** Udostępnia rejestrację i cofanie kluczy oraz bezpieczne opisy aktywnych czujników. */
 export function createSensorsService(repo: SensorsRepository) {
   return {
-    /** Mapuje aktywne czujniki repozytorium na publiczne opisy bez kluczy. */
     async list() { return (await repo.list()).map(toSensor); },
     /**
      * Odczytuje opis aktywnego czujnika.
@@ -53,5 +49,4 @@ export function createSensorsService(repo: SensorsRepository) {
     },
   };
 }
-/** Interfejs serwisu wywnioskowany z jego fabryki; kontrolery zależą od niego zamiast od implementacji SQL. */
 export type SensorsService = ReturnType<typeof createSensorsService>;

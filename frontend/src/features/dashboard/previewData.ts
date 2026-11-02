@@ -11,7 +11,6 @@ export function createPreviewData() {
     { id: 'demo-3', name: 'Napięcie akumulatora', minValue: 0, maxValue: 24, unit: 'V', color: '#d6c18f' },
   ];
 
-  /** Generuje 24 wspólne chwile odczytu trzech przykładowych serii i zwraca próbki od najnowszych. */
   function createPreviewMeasurements(): Measurement[] {
     const start = Date.now() - 2 * 60 * 60 * 1000;
     const rows: Measurement[] = [];
@@ -22,7 +21,7 @@ export function createPreviewData() {
         48 + Math.sin(i / 4 + 2) * 15,
         16 + Math.cos(i / 5) * 1.8,
       ];
-      previewSeries.forEach(/** Dodaje próbkę każdej serii dla wspólnej chwili danych demonstracyjnych. */ (series, index) => rows.push({
+      previewSeries.forEach( (series, index) => rows.push({
         id: 'preview-' + index + '-' + i,
         seriesId: series.id,
         value: Number(values[index].toFixed(2)),

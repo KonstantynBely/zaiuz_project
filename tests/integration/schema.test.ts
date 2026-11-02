@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import { createTestPool } from '../helpers/testDatabase.js';
 import { buildApp } from '../../backend/src/app.js';
 
-/** Sprawdza scenariusz: TimescaleDB: migracja tworzy hypertable measurements. */
 test('TimescaleDB: migracja tworzy hypertable measurements', async () => {
   const pool = createTestPool();
   try {

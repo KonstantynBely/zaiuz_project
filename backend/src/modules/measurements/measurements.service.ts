@@ -4,7 +4,6 @@ import { isDatabaseId, parseTimestamp } from '../../common/validation.js';
 import type { MeasurementInput, MeasurementQuery } from './measurements.schema.js';
 import type { MeasurementRow, MeasurementsRepository } from './measurements.repository.js';
 
-/** Mapuje kolumny SQL na publiczny pomiar; czas zamienia na ISO UTC, a brak sensora pomija. */
 function expose(row:MeasurementRow) {
   return {id:row.id,seriesId:row.series_id,
     ...(row.sensor_id===null?{}:{sensorId:row.sensor_id}),value:row.value,
@@ -24,7 +23,7 @@ export function parseMeasurementQuery(query:MeasurementQuery) {
   }
   if (query.series === '') throw new ApiError(400, 'Lista serii nie może być pusta');
   const series = query.series ? query.series.split(',') : undefined;
-  if (series?.some(/** Rozpoznaje niepoprawny identyfikator na liście serii przed zapytaniem SQL. */ x=>!isDatabaseId(x))) throw new ApiError(400,'Niepoprawna lista serii');
+  if (series?.some( x=>!isDatabaseId(x))) throw new ApiError(400,'Niepoprawna lista serii');
   const from = query.from===undefined?undefined:parseTimestamp(query.from);
   const to = query.to===undefined?undefined:parseTimestamp(query.to);
   if(from && to && from>to)throw new ApiError(400,'Parametr from nie może być późniejszy niż to');
@@ -41,7 +40,6 @@ export function parseMeasurementQuery(query:MeasurementQuery) {
  */
 export function createMeasurementsService(repo:MeasurementsRepository,onCreated?:(measurement:ReturnType<typeof expose>)=>void) {
   return {
-    /** Waliduje filtr odczytu i mapuje wiersze repozytorium na publiczne pomiary. */
     async list(query:MeasurementQuery) { return (await repo.list(parseMeasurementQuery(query))).map(expose); },
     /**
      * Odczytuje jeden pomiar w formacie publicznym.
@@ -71,5 +69,4 @@ export function createMeasurementsService(repo:MeasurementsRepository,onCreated?
     },
   };
 }
-/** Interfejs serwisu wywnioskowany z jego fabryki; kontrolery zależą od niego zamiast od implementacji SQL. */
 export type MeasurementsService=ReturnType<typeof createMeasurementsService>;

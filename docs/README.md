@@ -9,6 +9,6 @@ Notatki techniczne do rozwijania, testowania i utrzymywania RoverSense. Opisują
 | [Model danych](ERD.md) | Diagram tabel, relacje, usuwanie danych i kolejka sprzątania. |
 | [Bezpieczeństwo](SECURITY.md) | Hasła, sesje, klucze urządzeń, walidacja i konfiguracja HTTP. |
 | [Testowanie](TESTING.md) | Testy bez bazy, izolowana integracja, dane testowe i scenariusze ręczne. |
-| [Mapa kodu](CODE.md) | Punkty wejścia, odpowiedzialności modułów i konwencje komentarzy. |
+| [Mapa kodu](CODE.md) | Punkty wejścia, odpowiedzialności modułów i konwencje danych. |
 
 Instrukcja uruchomienia lokalnego i generatora znajduje się w [głównym README](../README.md). Konfiguracje usług, aktywacja wydań i backupy są opisane w [dokumentacji serwera](../server/README.md).

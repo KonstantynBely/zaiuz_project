@@ -13,7 +13,7 @@ export interface MeasurementRow {
  * @returns Wiersze malejąco po czasie; komórki zawierają oryginalne pomiary.
  */
 export function groupMeasurements(series: Series[], measurements: Measurement[]): MeasurementRow[] {
-  const allowed = new Set(series.map(/** Wyodrębnia identyfikator do klucza porównania, filtra lub zbioru wyników. */ item => String(item.id)));
+  const allowed = new Set(series.map( item => String(item.id)));
   const groups = new Map<string, Map<string, Measurement[]>>();
 
   for (const measurement of measurements) {
@@ -27,9 +27,9 @@ export function groupMeasurements(series: Series[], measurements: Measurement[])
   }
 
   const rows: MeasurementRow[] = [];
-  for (const timestamp of [...groups.keys()].sort(/** Porządkuje chwile pomiarów od najnowszych do najstarszych. */ (a, b) => Date.parse(b) - Date.parse(a))) {
+  for (const timestamp of [...groups.keys()].sort( (a, b) => Date.parse(b) - Date.parse(a))) {
     const bySeries = groups.get(timestamp)!;
-    const maxSlots = Math.max(...[...bySeries.values()].map(/** Wyznacza liczbę slotów potrzebną do zachowania powtórzonych pomiarów danej chwili. */ samples => samples.length));
+    const maxSlots = Math.max(...[...bySeries.values()].map( samples => samples.length));
     for (let index = 0; index < maxSlots; index += 1) {
       const cells = new Map<string, Measurement>();
       for (const [id, samples] of bySeries) {

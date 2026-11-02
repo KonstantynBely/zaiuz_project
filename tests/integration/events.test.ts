@@ -4,7 +4,6 @@ import { hashPassword } from '../../backend/src/modules/auth/auth.service.js';
 import { createTestPool } from '../helpers/testDatabase.js';
 import { buildApp } from '../../backend/src/app.js';
 
-/** Sprawdza scenariusz: SSE: nowy pomiar pojawia się w otwartym strumieniu. */
 test('SSE: nowy pomiar pojawia się w otwartym strumieniu',async()=>{
   const pool=createTestPool();const app=buildApp({pool});
   const name=`sse_test_${Date.now()}_${Math.floor(Math.random()*1e9)}`;
@@ -37,7 +36,7 @@ test('SSE: nowy pomiar pojawia się w otwartym strumieniu',async()=>{
     const frame=new TextDecoder().decode(incoming.value);
     assert.match(frame,/event: measurement/);
     assert.equal(JSON.parse(frame.split('data: ')[1]!.split('\n')[0]!).value,41);
-    abort.abort();await reader.cancel().catch(/** Obsługuje oczekiwaną odmowę kontrolowanej operacji asynchronicznej. */ ()=>{});
+    abort.abort();await reader.cancel().catch( ()=>{});
   } finally {
     abort.abort();
     await app.close();

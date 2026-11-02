@@ -1,7 +1,6 @@
 /** Odmowa HTTP z kodem statusu, odróżniana w UI od błędów sieci i anulowania. */
 export class ApiRequestError extends Error {
   readonly status: number;
-  /** Zachowuje status HTTP i bezpieczny komunikat odpowiedzi do obsługi błędów w interfejsie. */
   constructor(status: number, message: string) {
     super(message);
     this.status = status;

@@ -2,30 +2,22 @@ import { strict as assert } from 'node:assert';
 import test from 'node:test';
 import { createSimulationMonitor } from '../src/features/admin/simulationMonitor.ts';
 
-/** Oddaje sterowanie pętli zdarzeń, aby zakończyły się zaplanowane operacje asynchroniczne. */
-const flush = () => new Promise(/** Udostępnia sterowane zakończenie operacji asynchronicznej, potrzebne do odtworzenia wyścigu w teście. */ resolve => setImmediate(resolve));
+const flush = () => new Promise( resolve => setImmediate(resolve));
 
-/** Sprawdza scenariusz: series failures survive successful status polls and recover automatically. */
 test('series failures survive successful status polls and recover automatically', async t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const failure = new Error('Series unavailable');
   const seriesErrors = [], runErrors = [], series = [], runs = [];
   let attempts = 0;
   const monitor = createSimulationMonitor({
-    /** Udostępnia kontrolowaną listę serii albo jej błąd dla testu niezależnego monitora. */
     loadSeries: async () => {
       if (++attempts === 1) throw failure;
       return [{ id: '1' }];
     },
-    /** Udostępnia kontrolowany wynik statusów, niezależny od pobierania serii. */
     loadRuns: async () => [{ id: 'run' }],
-    /** Przyjmuje listę serii monitora i ewentualnie zachowuje ją do asercji. */
     onSeries: items => series.push(items),
-    /** Przyjmuje wynik monitora uruchomień i ewentualnie zachowuje go do asercji. */
     onRuns: items => runs.push(items),
-    /** Zachowuje błąd listy serii lub jego wyczyszczenie w stanie obserwowanym przez test. */
     onSeriesError: error => seriesErrors.push(error),
-    /** Zachowuje błąd statusów lub jego wyczyszczenie niezależnie od stanu listy serii. */
     onRunsError: error => runErrors.push(error),
   });
   try {
@@ -49,7 +41,6 @@ test('series failures survive successful status polls and recover automatically'
   }
 });
 
-/** Sprawdza scenariusz: run failure and recovery do not change series errors. */
 test('run failure and recovery do not change series errors', async t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const seriesFailure = new Error('Series unavailable');
@@ -57,15 +48,10 @@ test('run failure and recovery do not change series errors', async t => {
   const seriesErrors = [], runErrors = [];
   let attempts = 0;
   const monitor = createSimulationMonitor({
-    /** Udostępnia kontrolowaną listę serii albo jej błąd dla testu niezależnego monitora. */
     loadSeries: async () => { throw seriesFailure; },
-    /** Udostępnia kontrolowany wynik statusów, niezależny od pobierania serii. */
     loadRuns: async () => { if (++attempts === 1) throw runFailure; return []; },
-    /** Przyjmuje listę serii monitora i ewentualnie zachowuje ją do asercji. */
-    onSeries: () => {}, /** Przyjmuje wynik monitora uruchomień i ewentualnie zachowuje go do asercji. */ onRuns: () => {},
-    /** Zachowuje błąd listy serii lub jego wyczyszczenie w stanie obserwowanym przez test. */
+    onSeries: () => {}, onRuns: () => {},
     onSeriesError: error => seriesErrors.push(error),
-    /** Zachowuje błąd statusów lub jego wyczyszczenie niezależnie od stanu listy serii. */
     onRunsError: error => runErrors.push(error),
   });
   try {
@@ -79,19 +65,14 @@ test('run failure and recovery do not change series errors', async t => {
   }
 });
 
-/** Sprawdza scenariusz: disposing the monitor suppresses late series and status responses. */
 test('disposing the monitor suppresses late series and status responses', async () => {
   let resolveSeries, rejectRuns;
   const seen = [];
   const monitor = createSimulationMonitor({
-    /** Udostępnia kontrolowaną listę serii albo jej błąd dla testu niezależnego monitora. */
-    loadSeries: () => new Promise(/** Udostępnia sterowane zakończenie operacji asynchronicznej, potrzebne do odtworzenia wyścigu w teście. */ resolve => { resolveSeries = resolve; }),
-    /** Udostępnia kontrolowany wynik statusów, niezależny od pobierania serii. */
-    loadRuns: () => new Promise(/** Udostępnia sterowane zakończenie operacji asynchronicznej, potrzebne do odtworzenia wyścigu w teście. */ (_, reject) => { rejectRuns = reject; }),
-    /** Przyjmuje listę serii monitora i ewentualnie zachowuje ją do asercji. */
-    onSeries: value => seen.push(value), /** Przyjmuje wynik monitora uruchomień i ewentualnie zachowuje go do asercji. */ onRuns: value => seen.push(value),
-    /** Zachowuje błąd listy serii lub jego wyczyszczenie w stanie obserwowanym przez test. */
-    onSeriesError: error => seen.push(error), /** Zachowuje błąd statusów lub jego wyczyszczenie niezależnie od stanu listy serii. */ onRunsError: error => seen.push(error),
+    loadSeries: () => new Promise( resolve => { resolveSeries = resolve; }),
+    loadRuns: () => new Promise( (_, reject) => { rejectRuns = reject; }),
+    onSeries: value => seen.push(value), onRuns: value => seen.push(value),
+    onSeriesError: error => seen.push(error), onRunsError: error => seen.push(error),
   });
   monitor.stop();
   resolveSeries([{ id: 'old-session' }]);

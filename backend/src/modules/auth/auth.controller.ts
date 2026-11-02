@@ -14,20 +14,16 @@ export function bearerToken(request: FastifyRequest): string {
   return match[1];
 }
 
-/** Buduje handlery HTTP uwierzytelniania; reguły sesji deleguje do serwisu. */
 export function createAuthController(service: AuthService) {
   return {
-    /** Przekazuje dane logowania do serwisu i wyłącza cache odpowiedzi zawierającej token. */
     async login(request: FastifyRequest<{ Body: LoginBody }>, reply: FastifyReply) {
       reply.header('Cache-Control', 'no-store');
       return service.login(request.body);
     },
-    /** Unieważnia sesję wskazaną przez Bearer i kończy odpowiedź kodem 204. */
     async logout(request: FastifyRequest, reply: FastifyReply) {
       await service.logout(bearerToken(request));
       return reply.code(204).send();
     },
-    /** Zmienia hasło dla sesji Bearer; po sukcesie zwraca 204 bez treści. */
     async password(request: FastifyRequest<{ Body: PasswordBody }>, reply: FastifyReply) {
       await service.changePassword(bearerToken(request), request.body);
       return reply.code(204).send();

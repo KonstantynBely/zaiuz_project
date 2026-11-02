@@ -17,7 +17,7 @@ async function migrate(): Promise<void> {
       applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
     )`);
     const directory = process.env.MIGRATIONS_DIR ?? resolve(process.cwd(), '../database/migrations');
-    const files = (await readdir(directory)).filter(/** Wybiera tylko pliki SQL o wersjonowanej nazwie migracji. */ file => /^\d{3}_.+\.sql$/.test(file)).sort();
+    const files = (await readdir(directory)).filter( file => /^\d{3}_.+\.sql$/.test(file)).sort();
     if (files.length === 0) throw new Error(`Nie znaleziono migracji w ${directory}`);
     for (const file of files) {
       await client.query('BEGIN');
@@ -41,7 +41,7 @@ async function migrate(): Promise<void> {
   }
 }
 
-migrate().catch(/** Raportuje błąd skryptu bez sekretów i ustawia niezerowy kod zakończenia procesu. */ error => {
+migrate().catch( error => {
   console.error('Błąd migracji:', error instanceof Error ? error.message : String(error));
   process.exitCode = 1;
 });

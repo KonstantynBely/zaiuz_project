@@ -11,7 +11,6 @@ interface Job { controller:AbortController; finished:Promise<void> }
 /** Wspólny limit zadań wykonujących się i rezerwacji Start, które jeszcze tworzą sensor lub pobierają METAR. */
 const MAX_CONCURRENT_SIMULATIONS = 4;
 
-/** Mapuje uruchomienie SQL na publiczny status, liczniki, parametry i daty ISO; nie zwraca klucza sensora. */
 function expose(row:SimulationRow) {
   return {
     id:row.id,seriesId:row.series_id,sensorId:row.sensor_id,state:row.state,
@@ -44,10 +43,9 @@ function makeValue(params:SimulationParameters,index:number):number {
  * @throws Error po anulowaniu; przy udanym timeout usuwa nasłuch abort.
  */
 function pause(ms:number,signal:AbortSignal):Promise<void> {
-  return new Promise(/** Łączy timer oczekiwania z AbortSignal i sprząta zasoby po zakończeniu jednej ze ścieżek. */ (resolve,reject)=>{
+  return new Promise( (resolve,reject)=>{
     if(signal.aborted){reject(new Error('Zatrzymano symulację'));return;}
-    const id=setTimeout(/** Kończy oczekiwanie po interwale i usuwa niepotrzebny nasłuch anulowania. */ ()=>{signal.removeEventListener('abort',aborted);resolve();},ms);
-    /** Czyści timer opóźnienia i odrzuca oczekiwanie, aby Stop szybko przerwał tryb live. */
+    const id=setTimeout( ()=>{signal.removeEventListener('abort',aborted);resolve();},ms);
     function aborted(){clearTimeout(id);reject(new Error('Zatrzymano symulację'));}
     signal.addEventListener('abort',aborted,{once:true});
   });
@@ -90,7 +88,7 @@ export function createSimulationsService(
   }
   /** Planuje pojedynczy przebieg kolejki za 5 s; timer nie podtrzymuje sam procesu Node. */
   function scheduleCleanup() {
-    cleanupTimer = setTimeout(/** Uruchamia kolejny przebieg trwałej kolejki sprzątania czujników. */ () => { cleanupTask = retryCleanup(); }, 5000);
+    cleanupTimer = setTimeout( () => { cleanupTask = retryCleanup(); }, 5000);
     cleanupTimer.unref();
   }
   scheduleCleanup();
@@ -158,7 +156,6 @@ export function createSimulationsService(
     }
   }
   return {
-    /** Zwraca publiczne statusy aktywnych zadań i ostatniej historii bez sekretów sensorów. */
     async list() {return (await repo.list()).map(expose);},
     /**
      * Waliduje ID i odczytuje publiczny stan uruchomienia.
@@ -199,8 +196,8 @@ export function createSimulationsService(
         if (observations) {
           // Odrzucenie przed POST /api/sensors: nie tworzymy czujnika,
           // którego rzeczywiste pomiary nie mogą zostać zapisane.
-          const values=observations.map(/** Wybiera temperaturę obserwacji do sprawdzenia zakresu docelowej serii. */ point=>point.value);
-          if (values.some(/** Odrzuca obserwacje zawierające nieskończoną wartość lub NaN. */ value=>!Number.isFinite(value))) {
+          const values=observations.map( point=>point.value);
+          if (values.some( value=>!Number.isFinite(value))) {
             throw new ApiError(422,'Źródło METAR zwróciło nieprawidłowe wartości temperatury.');
           }
           const observedMin=Math.min(...values);
@@ -257,11 +254,10 @@ export function createSimulationsService(
       closing = true;
       clearTimeout(cleanupTimer);
       const running=[...jobs.values()];
-      running.forEach(/** Przerywa pracę jednego aktywnego zadania podczas zamykania wykonawcy. */ x=>x.controller.abort());
-      await Promise.allSettled(running.map(/** Zbiera Promise zakończenia zadania, aby zaczekać na jego blok sprzątania. */ x=>x.finished));
+      running.forEach( x=>x.controller.abort());
+      await Promise.allSettled(running.map( x=>x.finished));
       await cleanupTask;
     },
   };
 }
-/** Interfejs serwisu wywnioskowany z jego fabryki; kontrolery zależą od niego zamiast od implementacji SQL. */
 export type SimulationsService=ReturnType<typeof createSimulationsService>;

@@ -3,7 +3,6 @@ import { sensorBodySchema, type SensorInput } from './sensors.schema.js';
 import { createSensorsController } from './sensors.controller.js';
 import type { SensorsService } from './sensors.service.js';
 
-/** Rejestruje administracyjne odczyty czujników i zapisy chronione strażnikiem administratora/workera. */
 export async function sensorsRoutes(app:FastifyInstance,service:SensorsService,auth:preHandlerHookHandler,sensorWriteAuth:preHandlerHookHandler):Promise<void> {
   const ctl=createSensorsController(service);
   app.get('/api/sensors',{preHandler:auth},ctl.list);

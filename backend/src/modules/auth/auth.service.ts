@@ -17,12 +17,10 @@ export async function hashPassword(password: string): Promise<string> {
   return hash(password, 12);
 }
 
-/** Ważność nowej sesji w sekundach, zwracana także klientowi w expiresIn. */
 const TOKEN_LIFETIME = 3600;
 /** Tworzy SHA-256 losowego tokenu; do repozytorium przekazywany jest skrót zamiast jawnego sekretu. */
 const digest = (token: string) => createHash('sha256').update(token).digest('hex');
 
-/** Udostępnia logowanie, sprawdzanie i cofanie sesji oraz zmianę hasła na wstrzykniętym repozytorium. */
 export function createAuthService(repository: AuthRepository) {
   return {
     /**
@@ -80,5 +78,4 @@ export function createAuthService(repository: AuthRepository) {
 
 // Poprawny bcrypt hash wykorzystywany wyłącznie do porównania przy nieznanym loginie.
 const DUMMY_HASH = '$2b$12$C6UzMDM.H6dfI/f/IKcEeOT46fyWda0noRPuOFXqeJPPhxf69mrHu';
-/** Interfejs serwisu wywnioskowany z jego fabryki; kontrolery zależą od niego zamiast od implementacji SQL. */
 export type AuthService = ReturnType<typeof createAuthService>;

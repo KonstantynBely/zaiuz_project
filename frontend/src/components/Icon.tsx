@@ -1,5 +1,4 @@
 import type { ReactNode } from 'react';
-/** Zamknięty zestaw nazw dekoracyjnych ikon dostępnych w komponencie SVG. */
 export type IconName = 'dashboard' | 'chart' | 'layers' | 'radio' | 'clock' | 'settings' | 'refresh' | 'menu' | 'activity' | 'database' | 'planet' | 'print' | 'lock' | 'logout' | 'thermometer' | 'droplet' | 'battery' | 'gauge' | 'wind' | 'sun';
 /**
  * Renderuje wybraną ikonę SVG o podanym rozmiarze w kolorze currentColor.

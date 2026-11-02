@@ -11,7 +11,6 @@ interface SensorForWrite {
 }
 const projection='id::text,series_id::text,sensor_id::text,value,timestamp';
 
-/** Buduje parametryzowane operacje SQL pomiarów i rejestru odrzuceń. */
 export function createMeasurementsRepository(pool: Pool) {
   return {
     /**
@@ -45,7 +44,7 @@ export function createMeasurementsRepository(pool: Pool) {
      */
     async insertWithKey(hash:string,value:number,timestamp:Date):Promise<
       {row:MeasurementRow} | {error:'auth'|'range'|'future';sensorId?:string} > {
-      return transaction(pool,/** Blokuje wiersze czujnika i serii, waliduje zapis i zwraca wynik bez częściowego zatwierdzenia. */ async client=>{
+      return transaction(pool, async client=>{
         // FOR UPDATE blokuje serię na czas sprawdzenia i zapisu. Aktualizacja
         // zakresu serii korzysta z tej samej blokady, także między procesami API.
         const lookup=await client.query<SensorForWrite>(
@@ -76,5 +75,4 @@ export function createMeasurementsRepository(pool: Pool) {
     },
   };
 }
-/** Interfejs repozytorium wywnioskowany z fabryki operacji SQL, wstrzykiwany do serwisu. */
 export type MeasurementsRepository=ReturnType<typeof createMeasurementsRepository>;

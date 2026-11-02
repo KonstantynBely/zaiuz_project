@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import { createTestPool } from '../helpers/testDatabase.js';
 import { createSimulationsRepository } from '../../backend/src/modules/simulations/simulations.repository.js';
 
-/** Sprawdza scenariusz: Aktywne zadanie pozostaje widoczne po ponad 100 zakończonych symulacjach. */
 test('Aktywne zadanie pozostaje widoczne po ponad 100 zakończonych symulacjach', async () => {
   const pool = createTestPool();
   const repo = createSimulationsRepository(pool);
@@ -19,7 +18,7 @@ test('Aktywne zadanie pozostaje widoczne po ponad 100 zakończonych symulacjach'
     await pool.query(
       `INSERT INTO simulation_runs(series_id,state) SELECT $1,'completed' FROM generate_series(1,101)`, [seriesId],
     );
-    assert.ok((await repo.list()).some(/** Wybiera lub rozpoznaje rekord fixture spełniający warunek badanego scenariusza. */ row => row.id === runningId));
+    assert.ok((await repo.list()).some( row => row.id === runningId));
     await repo.changeState(runningId, 'completed');
     await repo.changeState(runningId, 'stopping');
     assert.equal((await repo.get(runningId))?.state, 'completed', 'Stop nie może nadpisać zakończenia zadania');

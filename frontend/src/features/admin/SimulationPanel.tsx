@@ -4,7 +4,6 @@ import { createSimulationMonitor } from './simulationMonitor';
 import type { Series } from '../../api/client';
 import { adminApi, ApiRequestError, type Simulation, type SimulationInput, type SimulationState } from '../../api/admin';
 
-/** Kontrakt właściwości komponentu SimulationPanel: dane kontrolowane i callbacki właściciela stanu. */
 interface Props {
   token: string;
   onUnauthorized: () => void;
@@ -17,9 +16,7 @@ const stateLabels: Record<SimulationState, string> = {
   pending: 'Oczekiwanie', running: 'W trakcie', stopping: 'Zatrzymywanie',
   stopped: 'Zatrzymano', completed: 'Ukończono', failed: 'Błąd',
 };
-/** Formatuje datę uruchomienia w lokalnej strefie przeglądarki; brak daty pokazuje jako kreskę. */
 const dateLabel = (date: string | null) => date ? new Date(date).toLocaleString('pl-PL', { dateStyle: 'short', timeStyle: 'medium' }) : '—';
-/** Zachowuje komunikat rozpoznanego błędu API; inne błędy przedstawia jako problem połączenia. */
 const describe = (error: unknown) => {
   if (error instanceof ApiRequestError) return error.message;
   return 'Nie udało się połączyć z serwerem.';
@@ -50,10 +47,8 @@ export function SimulationPanel({ token, onUnauthorized, onMeasurementsChanged, 
   const sessionEpoch = useRef(0);
   const [notice, setNotice] = useState('');
 
-  /** Odszukuje opis aktualnie wybranej serii na potrzeby walidacji formularza. */
-  const selectedSeries = useMemo(() => series.find(/** Dopasowuje identyfikatory jako tekst, aby obsłużyć liczbowe i tekstowe ID kontraktu. */ item => String(item.id) === seriesId), [series, seriesId]);
-  /** Wybiera zadania w stanach pending, running lub stopping do panelu sterowania. */
-  const activeRuns = useMemo(() => runs.filter(/** Rozpoznaje zadania, które nadal mogą być wykonywane lub zatrzymywane. */ run => runningStates.includes(run.state)), [runs]);
+  const selectedSeries = useMemo(() => series.find( item => String(item.id) === seriesId), [series, seriesId]);
+  const activeRuns = useMemo(() => runs.filter( run => runningStates.includes(run.state)), [runs]);
 
   /** Tworzy niezależne monitory serii i zadań dla jednej generacji sesji; cleanup unieważnia generację i zatrzymuje pollery. */
   useEffect(() => {
@@ -69,30 +64,24 @@ export function SimulationPanel({ token, onUnauthorized, onMeasurementsChanged, 
       else update(reason === null ? '' : describe(reason));
     };
     const poller = createSimulationMonitor({
-      /** Pobiera serie dla monitora, przekazując jego sygnał anulowania. */
       loadSeries: signal => adminApi.listSeries(signal),
-      /** Pobiera statusy zadań dla bieżącego tokenu i sygnału monitora. */
       loadRuns: signal => adminApi.listSimulations(token, signal),
-      /** Stosuje listę serii wyłącznie dla bieżącej generacji sesji i kończy początkowe ładowanie. */
       onSeries: items => {
         if (!active || sessionEpoch.current !== epoch) return;
         setSeries(items);
         setLoading(false);
       },
-      /** Stosuje statusy symulacji, jeżeli widok i generacja sesji są nadal aktywne. */
       onRuns: items => {
         if (active && sessionEpoch.current === epoch) setRuns(items);
       },
-      /** Aktualizuje błąd listy serii i kończy jej początkowy stan ładowania dla aktywnego widoku. */
       onSeriesError: reason => {
         reportError(reason, setSeriesError);
         if (active && sessionEpoch.current === epoch) setLoading(false);
       },
-      /** Przekazuje błąd odpytywania statusów do niezależnego komunikatu lub obsługi utraty sesji. */
       onRunsError: reason => reportError(reason, setPollError),
     });
     pollerRef.current = poller;
-    return /** Unieważnia sesję widoku i zatrzymuje monitory, aby spóźnione odpowiedzi nie zmieniały UI. */ () => {
+    return () => {
       active = false;
       ++sessionEpoch.current;
       poller.stop();
@@ -100,10 +89,9 @@ export function SimulationPanel({ token, onUnauthorized, onMeasurementsChanged, 
     };
   }, [token, onUnauthorized]);
 
-  /** Wybiera serię i uzupełnia granice formularza jej aktualnym zakresem; brak wyboru czyści pola. */
   function chooseSeries(id: string) {
     setSeriesId(id);
-    const target = series.find(/** Dopasowuje identyfikatory jako tekst, aby obsłużyć liczbowe i tekstowe ID kontraktu. */ item => String(item.id) === id);
+    const target = series.find( item => String(item.id) === id);
     setMinimum(target ? String(target.minValue) : '');
     setMaximum(target ? String(target.maxValue) : '');
   }
@@ -144,7 +132,7 @@ export function SimulationPanel({ token, onUnauthorized, onMeasurementsChanged, 
     try {
       const run = await adminApi.startSimulation(token, input);
       if (sessionEpoch.current !== epoch) return;
-      setRuns(/** Dodaje nowy status zadania, usuwając poprzedni wpis o tym samym ID. */ previous => [run, ...previous.filter(/** Usuwa poprzedni wpis uruchomienia o tym samym ID przed dodaniem nowego statusu. */ item => item.id !== run.id)]);
+      setRuns( previous => [run, ...previous.filter( item => item.id !== run.id)]);
       setNotice(pattern === 'observed'
         ? 'Uruchomiono odtwarzanie obserwacji METAR (Aviation Weather Center).'
         : 'Uruchomiono symulację.');
@@ -170,7 +158,7 @@ export function SimulationPanel({ token, onUnauthorized, onMeasurementsChanged, 
     try {
       const run = await adminApi.stopSimulation(token, id);
       if (sessionEpoch.current !== epoch) return;
-      setRuns(/** Podmienia status wskazanego zadania, zachowując pozostałą listę. */ previous => previous.map(/** Zastępuje tylko status uruchomienia wskazanego przez odpowiedź Stop. */ item => item.id === run.id ? run : item));
+      setRuns( previous => previous.map( item => item.id === run.id ? run : item));
       setNotice('Zatrzymano symulację. Zapisane pomiary pozostały w historii.');
       onMeasurementsChanged();
       pollerRef.current?.refresh();
@@ -198,20 +186,20 @@ export function SimulationPanel({ token, onUnauthorized, onMeasurementsChanged, 
         <h2 id="simulation-form-heading">Nowa symulacja</h2>
         <form className="admin-form" onSubmit={start}>
           <label htmlFor="sim-series">Seria pomiarowa</label>
-          <select id="sim-series" required value={seriesId} onChange={/** Zmienia serię symulacji i uzupełnia pola jej zakresem. */ event => chooseSeries(event.target.value)} disabled={busy}>
+          <select id="sim-series" required value={seriesId} onChange={ event => chooseSeries(event.target.value)} disabled={busy}>
             <option value="">Wybierz serię</option>
-            {series.filter(/** Dla METAR dopuszcza wyłącznie serie z jednostką temperatury. */ item => pattern !== 'observed' || ['°C', 'C'].includes(item.unit ?? '')).map(/** Tworzy opcję wyboru z identyfikatorem, nazwą i ewentualną jednostką serii. */ item =>
+            {series.filter( item => pattern !== 'observed' || ['°C', 'C'].includes(item.unit ?? '')).map( item =>
               <option key={String(item.id)} value={String(item.id)}>{item.name} ({item.unit || 'bez jednostki'})</option>)}
           </select>
           <label htmlFor="sim-name">Nazwa czujnika (opcjonalna)</label>
-          <input id="sim-name" maxLength={100} value={name} onChange={/** Aktualizuje nazwę w stanie formularza. */ event => setName(event.target.value)} disabled={busy} placeholder="Np. czujnik temperatury"/>
+          <input id="sim-name" maxLength={100} value={name} onChange={ event => setName(event.target.value)} disabled={busy} placeholder="Np. czujnik temperatury"/>
           <div className="admin-field-grid">
             <div><label htmlFor="sim-mode">Sposób odtwarzania</label>
-              <select id="sim-mode" value={mode} onChange={/** Aktualizuje tryb odtwarzania w stanie formularza. */ event => setMode(event.target.value as 'history' | 'live')} disabled={busy}>
+              <select id="sim-mode" value={mode} onChange={ event => setMode(event.target.value as 'history' | 'live')} disabled={busy}>
                 <option value="live">Na żywo</option><option value="history">Historycznie</option>
               </select></div>
             <div><label htmlFor="sim-pattern">Źródło danych</label>
-              <select id="sim-pattern" value={pattern} onChange={/** Zmienia serię symulacji i uzupełnia pola jej zakresem. */ event => {
+              <select id="sim-pattern" value={pattern} onChange={ event => {
                 const next = event.target.value as 'random' | 'sine' | 'observed';
                 setPattern(next);
                 if (next === 'observed' && selectedSeries && !['°C', 'C'].includes(selectedSeries.unit ?? '')) chooseSeries('');
@@ -223,7 +211,7 @@ export function SimulationPanel({ token, onUnauthorized, onMeasurementsChanged, 
           </div>
           {pattern === 'observed' && <>
             <label htmlFor="sim-station">Stacja obserwacyjna</label>
-            <select id="sim-station" value={station} onChange={/** Aktualizuje stację METAR w stanie formularza. */ event => setStation(event.target.value as typeof station)} disabled={busy}>
+            <select id="sim-station" value={station} onChange={ event => setStation(event.target.value as typeof station)} disabled={busy}>
               <option value="EPWA">Warszawa-Okęcie (EPWA)</option>
               <option value="EPKK">Kraków-Balice (EPKK)</option>
               <option value="EPGD">Gdańsk (EPGD)</option>
@@ -231,12 +219,12 @@ export function SimulationPanel({ token, onUnauthorized, onMeasurementsChanged, 
             <p className="admin-helper">Temperatury z ostatnich 24 godzin, źródło: Aviation Weather Center (METAR). W trybie historycznym zachowywana jest data obserwacji, a na żywo — bieżący czas odtwarzania.</p>
           </>}
           {pattern !== 'observed' && <div className="admin-field-grid">
-            <div><label htmlFor="sim-min">Minimum wartości</label><input id="sim-min" type="number" step="any" value={minimum} onChange={/** Aktualizuje dolną granicę w stanie formularza. */ event => setMinimum(event.target.value)} required disabled={busy}/></div>
-            <div><label htmlFor="sim-max">Maksimum wartości</label><input id="sim-max" type="number" step="any" value={maximum} onChange={/** Aktualizuje górną granicę w stanie formularza. */ event => setMaximum(event.target.value)} required disabled={busy}/></div>
+            <div><label htmlFor="sim-min">Minimum wartości</label><input id="sim-min" type="number" step="any" value={minimum} onChange={ event => setMinimum(event.target.value)} required disabled={busy}/></div>
+            <div><label htmlFor="sim-max">Maksimum wartości</label><input id="sim-max" type="number" step="any" value={maximum} onChange={ event => setMaximum(event.target.value)} required disabled={busy}/></div>
           </div>}
           <div className="admin-field-grid">
-            {pattern !== 'observed' && <div><label htmlFor="sim-count">Liczba pomiarów</label><input id="sim-count" type="number" min={1} max={1000} step={1} required value={count} onChange={/** Aktualizuje liczbę próbek w stanie formularza. */ event => setCount(event.target.value)} disabled={busy}/></div>}
-            <div><label htmlFor="sim-interval">Odstęp między pomiarami (s)</label><input id="sim-interval" type="number" min={0.2} max={60} step={0.1} required value={intervalSeconds} onChange={/** Aktualizuje interwał w sekundach w stanie formularza. */ event => setIntervalSeconds(event.target.value)} disabled={busy}/></div>
+            {pattern !== 'observed' && <div><label htmlFor="sim-count">Liczba pomiarów</label><input id="sim-count" type="number" min={1} max={1000} step={1} required value={count} onChange={ event => setCount(event.target.value)} disabled={busy}/></div>}
+            <div><label htmlFor="sim-interval">Odstęp między pomiarami (s)</label><input id="sim-interval" type="number" min={0.2} max={60} step={0.1} required value={intervalSeconds} onChange={ event => setIntervalSeconds(event.target.value)} disabled={busy}/></div>
           </div>
           {pattern !== 'observed' && <p className="admin-helper">{mode === 'history' ? 'Pomiary otrzymają historyczne daty i zostaną wysłane bez oczekiwania.' : 'Pomiary będą wysyłane w wybranych odstępach.'}</p>}
           <button type="submit" className="admin-primary" disabled={busy || loading || activeRuns.length >= 4 || !series.length}>{busy ? 'Trwa uruchamianie…' : activeRuns.length >= 4 ? 'Osiągnięto limit 4 symulacji' : '▶ Rozpocznij symulację'}</button>
@@ -251,9 +239,9 @@ export function SimulationPanel({ token, onUnauthorized, onMeasurementsChanged, 
           </div>
           {activeRuns.length === 0 && <p className="admin-empty">Brak aktywnych symulacji.</p>}
           <div className="sim-history-list">
-            {activeRuns.map(/** Renderuje przycisk filtra z aktualnym stanem aria-pressed. */ run => <div key={run.id} className="sim-active-card">
+            {activeRuns.map( run => <div key={run.id} className="sim-active-card">
               <div className="admin-card-head">
-                <div><strong>Symulacja #{run.id}</strong><p className="admin-helper">{series.find(/** Dopasowuje identyfikatory jako tekst, aby obsłużyć liczbowe i tekstowe ID kontraktu. */ s => String(s.id) === String(run.seriesId))?.name || 'Seria ' + run.seriesId}</p></div>
+                <div><strong>Symulacja #{run.id}</strong><p className="admin-helper">{series.find( s => String(s.id) === String(run.seriesId))?.name || 'Seria ' + run.seriesId}</p></div>
                 <span className="sim-state sim-running">{stateLabels[run.state]}</span>
               </div>
               <div className="sim-stat-line"><span>Przyjęte / wszystkie</span><strong>{run.acceptedCount} / {run.parameters.count}</strong></div>
@@ -262,7 +250,7 @@ export function SimulationPanel({ token, onUnauthorized, onMeasurementsChanged, 
               <div className="sim-progress" role="progressbar" aria-label={'Postęp symulacji ' + run.id} aria-valuemin={0} aria-valuemax={run.parameters.count} aria-valuenow={Math.min(run.parameters.count, run.acceptedCount + run.rejectedCount)}><span style={{width: Math.min(100, 100 * (run.acceptedCount + run.rejectedCount) / run.parameters.count) + '%'}}/></div>
               {run.error && <p className="form-message error" role="alert">{run.error}</p>}
               <div className="sim-actions">
-                <button className="admin-danger" type="button" disabled={busy || run.state === 'stopping'} onClick={/** Zleca zatrzymanie wskazanego zadania bez blokowania obsługi zdarzenia React. */ () => {void stop(run.id);}}>■ Zatrzymaj #{run.id}</button>
+                <button className="admin-danger" type="button" disabled={busy || run.state === 'stopping'} onClick={ () => {void stop(run.id);}}>■ Zatrzymaj #{run.id}</button>
                 <button className="admin-minor" type="button" onClick={onOpenDashboard}>Otwórz wykres →</button>
               </div>
             </div>)}
@@ -273,8 +261,8 @@ export function SimulationPanel({ token, onUnauthorized, onMeasurementsChanged, 
           {loading && <p className="loading-text" role="status">Ładowanie symulacji…</p>}
           {!loading && runs.length === 0 && <p className="admin-empty">Nie uruchomiono jeszcze żadnej symulacji.</p>}
           <div className="sim-history-list">
-            {runs.slice(0, 8).map(/** Renderuje rekord listy wraz z opisem, stanem i dostępnymi akcjami. */ run => <div className="sim-history-row" key={run.id}>
-              <div><strong>Symulacja #{run.id}</strong><span>{series.find(/** Dopasowuje identyfikatory jako tekst, aby obsłużyć liczbowe i tekstowe ID kontraktu. */ s => String(s.id) === String(run.seriesId))?.name || 'Seria ' + run.seriesId} · {dateLabel(run.startedAt)}{run.parameters.pattern === 'observed' ? ' · AWC METAR ' + (run.parameters.station ?? '') : ''}</span></div>
+            {runs.slice(0, 8).map( run => <div className="sim-history-row" key={run.id}>
+              <div><strong>Symulacja #{run.id}</strong><span>{series.find( s => String(s.id) === String(run.seriesId))?.name || 'Seria ' + run.seriesId} · {dateLabel(run.startedAt)}{run.parameters.pattern === 'observed' ? ' · AWC METAR ' + (run.parameters.station ?? '') : ''}</span></div>
               <div><span className={'sim-state ' + (runningStates.includes(run.state) ? 'sim-running' : run.state === 'failed' ? 'sim-failed' : '')}>{stateLabels[run.state]}</span><small>Przyjęte: {run.acceptedCount} · Odrzucone: {run.rejectedCount}</small></div>
               {run.error && <p className="sim-error-text">{run.error}</p>}
             </div>)}

@@ -5,7 +5,6 @@ import { measurementBodySchema } from './measurements.schema.js';
 import { createMeasurementsController } from './measurements.controller.js';
 import { ApiError } from '../../common/errors.js';
 
-/** Rejestruje publiczne odczyty i POST uwierzytelniany X-API-Key; nie udostępnia edycji pomiarów. */
 export async function measurementsRoutes(app:FastifyInstance,service:MeasurementsService):Promise<void> {
   const ctl=createMeasurementsController(service);
   app.get<{Querystring:MeasurementQuery}>('/api/measurements',ctl.list);

@@ -8,7 +8,6 @@ const series = [
 ];
 const at = '2026-10-20T13:00:00.000Z';
 
-/** Sprawdza scenariusz: wspólny czas zapisano w jednym wierszu z osobnymi kolumnami. */
 test('wspólny czas zapisano w jednym wierszu z osobnymi kolumnami', () => {
   const rows = groupMeasurements(series, [
     { id: 'a', seriesId: '1', value: 4, timestamp: at },
@@ -19,7 +18,6 @@ test('wspólny czas zapisano w jednym wierszu z osobnymi kolumnami', () => {
   assert.equal(rows[0].cells.get('2')?.id, 'b');
 });
 
-/** Sprawdza scenariusz: dwa pomiary tej samej serii i czasu zachowały osobne identyfikatory. */
 test('dwa pomiary tej samej serii i czasu zachowały osobne identyfikatory', () => {
   const rows = groupMeasurements(series, [
     { id: 'a', seriesId: '1', value: 4, timestamp: at },
@@ -33,17 +31,15 @@ test('dwa pomiary tej samej serii i czasu zachowały osobne identyfikatory', () 
   assert.equal(rows[1].cells.get('2'), undefined);
 });
 
-/** Sprawdza scenariusz: pomiary są sortowane od najnowszego bez gubienia filtrów serii. */
 test('pomiary są sortowane od najnowszego bez gubienia filtrów serii', () => {
   const rows = groupMeasurements(series.slice(0, 1), [
     { id: 'old', seriesId: '1', value: 1, timestamp: '2026-10-18T00:00:00.000Z' },
     { id: 'discard', seriesId: '2', value: 2, timestamp: '2026-10-22T00:00:00.000Z' },
     { id: 'new', seriesId: '1', value: 3, timestamp: '2026-10-21T00:00:00.000Z' },
   ]);
-  assert.deepEqual(rows.map(/** Wyodrębnia identyfikatory fixture na potrzeby sprawdzenia wyniku lub unikalności. */ row => row.cells.get('1')?.id), ['new', 'old']);
+  assert.deepEqual(rows.map( row => row.cells.get('1')?.id), ['new', 'old']);
 });
 
-/** Sprawdza scenariusz: brak pomiarów zwraca pustą tabelę. */
 test('brak pomiarów zwraca pustą tabelę', () => {
   assert.deepEqual(groupMeasurements(series, []), []);
 });

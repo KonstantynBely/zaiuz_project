@@ -9,9 +9,7 @@ export interface MeasurementEvent {
 export function createEventsService() {
   const clients=new Set<ServerResponse>();
   return {
-    /** Dodaje odpowiedź HTTP do odbiorców nowych pomiarów; nagłówki ustawia trasa SSE. */
     register(response:ServerResponse) { clients.add(response); },
-    /** Usuwa zamkniętego odbiorcę z rejestru; wielokrotne wywołanie jest bezpieczne. */
     unregister(response:ServerResponse) { clients.delete(response); },
     /**
      * Serializuje publiczny pomiar do ramki SSE i rozsyła ją aktywnym klientom.
@@ -26,9 +24,7 @@ export function createEventsService() {
         try {response.write(frame);} catch {clients.delete(response);}
       }
     },
-    /** Kończy wszystkie odpowiedzi SSE i opróżnia rejestr przed zamknięciem serwera. */
     close() {for(const response of clients)response.end();clients.clear();},
   };
 }
-/** Interfejs serwisu wywnioskowany z jego fabryki; kontrolery zależą od niego zamiast od implementacji SQL. */
 export type EventsService=ReturnType<typeof createEventsService>;

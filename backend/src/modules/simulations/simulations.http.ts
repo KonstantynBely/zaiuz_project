@@ -1,7 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { ApiError } from '../../common/errors.js';
 
-/** Minimalny opis serii potrzebny workerowi do sprawdzenia zakresu i zgodności jednostki METAR. */
 interface SeriesDetails { minValue: number; maxValue: number; unit?: string | null }
 /** Jednorazowy wynik rejestracji lokalnego sensora, przechowywany w pamięci workera. */
 interface RegisteredSensor { id: string; apiKey: string }
@@ -62,7 +61,6 @@ export function createSimulationHttpClient(app: FastifyInstance, workerKey: stri
   }
 
   return {
-    /** Pobiera przez publiczne REST granice i jednostkę serii oraz sprawdza kształt odpowiedzi. */
     async getSeries(id: string): Promise<SeriesDetails> {
       const response = await request('/api/series/' + encodeURIComponent(id), 'GET');
       if (!response.ok) return problem(response);
@@ -104,7 +102,7 @@ export function createSimulationHttpClient(app: FastifyInstance, workerKey: stri
           await problem(response);
         } catch (error) {
           if (attempt === 2 || (error instanceof ApiError && error.status !== 502)) throw error;
-          await new Promise(/** Kończy krótkie opóźnienie pomiędzy kolejnymi próbami lokalnego REST. */ resolve => setTimeout(resolve, (attempt + 1) * 100));
+          await new Promise( resolve => setTimeout(resolve, (attempt + 1) * 100));
         }
       }
     },

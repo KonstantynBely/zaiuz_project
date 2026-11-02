@@ -4,7 +4,6 @@ import { transaction } from '../../common/transaction.js';
 /** Wewnętrzny rekord konta z hashem hasła; nie może zostać wysłany jako publiczny JSON. */
 interface AdminRow { id: string; username: string; password_hash: string }
 
-/** Buduje operacje SQL kont i sesji; przechowuje wyłącznie hashe haseł i tokenów. */
 export function createAuthRepository(pool: Pool) {
   return {
     /**
@@ -33,7 +32,7 @@ export function createAuthRepository(pool: Pool) {
      * @returns false, gdy konto lub oczekiwany hash nie są już aktualne.
      */
     async storeToken(adminId: string, expectedHash: string, tokenHash: string, expiresAt: Date): Promise<boolean> {
-      return transaction(pool, /** Blokuje konto i zapisuje hash tokenu tylko dla wciąż aktualnego hasha hasła. */ async client => {
+      return transaction(pool, async client => {
         // Password changes lock this same row until all old sessions are revoked.
         const current = await client.query<{ password_hash: string }>(
           'SELECT password_hash FROM admins WHERE id=$1 FOR UPDATE', [adminId]);
@@ -43,7 +42,6 @@ export function createAuthRepository(pool: Pool) {
         return true;
       });
     },
-    /** Oznacza pasujący, jeszcze aktywny token jako cofnięty; ponowienie nie zmienia efektu. */
     async revokeToken(tokenHash: string): Promise<void> {
       await pool.query('UPDATE access_tokens SET revoked_at=now() WHERE token_hash=$1 AND revoked_at IS NULL', [tokenHash]);
     },
@@ -52,7 +50,7 @@ export function createAuthRepository(pool: Pool) {
      * @returns false, jeśli hasło zostało w międzyczasie zmienione lub konto zniknęło.
      */
     async changePassword(adminId: string, currentHash: string, nextHash: string): Promise<boolean> {
-      return transaction(pool, /** Warunkowo zmienia hash hasła i cofa sesje konta w tej samej transakcji. */ async client => {
+      return transaction(pool, async client => {
         const result = await client.query(
           'UPDATE admins SET password_hash=$3 WHERE id=$1 AND password_hash=$2 RETURNING id',
           [adminId, currentHash, nextHash]);
@@ -63,5 +61,4 @@ export function createAuthRepository(pool: Pool) {
     },
   };
 }
-/** Interfejs repozytorium wywnioskowany z fabryki operacji SQL, wstrzykiwany do serwisu. */
 export type AuthRepository = ReturnType<typeof createAuthRepository>;

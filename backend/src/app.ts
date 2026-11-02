@@ -48,9 +48,9 @@ export function buildApp(options:{pool?:Pool;loadObserved?:(station:MetarStation
   });
   registerErrorHandling(app);
   app.decorateRequest('simulationWorker', false);
-  app.addHook('onRequest',/** Sprawdza negocjację formatu API i Content-Type przed handlerami, z osobnym dopuszczeniem SSE. */ async(request,reply)=>{
+  app.addHook('onRequest', async(request,reply)=>{
     const sse=request.url.split('?')[0]==='/api/events' && request.method==='GET' &&
-      (request.headers.accept??'').split(',').some(/** Rozpoznaje żądanie formatu strumienia SSE w nagłówku Accept. */ x=>x.trim().startsWith('text/event-stream'));
+      (request.headers.accept??'').split(',').some( x=>x.trim().startsWith('text/event-stream'));
     if(request.url.startsWith('/api/')&&!sse&&!acceptsJson(request.headers.accept)) {
       throw new ApiError(406,'Żądany format odpowiedzi nie jest dostępny');
     }
@@ -60,14 +60,14 @@ export function buildApp(options:{pool?:Pool;loadObserved?:(station:MetarStation
     }
     reply.header('X-Content-Type-Options','nosniff');
   });
-  app.addHook('onSend',/** Dodaje nosniff również do odpowiedzi błędów i odpowiedzi spoza zwykłych handlerów. */ async(_request,reply,payload)=>{
+  app.addHook('onSend', async(_request,reply,payload)=>{
     reply.header('X-Content-Type-Options','nosniff');
     return payload;
   });
   app.register(healthRoutes);
   const events=createEventsService();
-  app.register(/** Rejestruje wydzielone trasy Fastify z zależnościami i strażnikami utworzonymi w buildApp. */ async instance=>eventsRoutes(instance,events));
-  app.addHook('preClose',/** Zamyka otwarte odpowiedzi SSE przed zakończeniem serwera. */ async()=>{events.close();});
+  app.register( async instance=>eventsRoutes(instance,events));
+  app.addHook('preClose', async()=>{events.close();});
   if(options.pool) {
     const pool=options.pool;
     const authService=createAuthService(createAuthRepository(pool));
@@ -103,13 +103,13 @@ export function buildApp(options:{pool?:Pool;loadObserved?:(station:MetarStation
     const seriesService=createSeriesService(createSeriesRepository(pool));
     const sensorService=createSensorsService(createSensorsRepository(pool));
     const measureService=createMeasurementsService(createMeasurementsRepository(pool),events.publish);
-    app.register(/** Rejestruje wydzielone trasy Fastify z zależnościami i strażnikami utworzonymi w buildApp. */ async instance=>authRoutes(instance,authService,adminGuard));
-    app.register(/** Rejestruje wydzielone trasy Fastify z zależnościami i strażnikami utworzonymi w buildApp. */ async instance=>seriesRoutes(instance,seriesService,adminGuard));
-    app.register(/** Rejestruje wydzielone trasy Fastify z zależnościami i strażnikami utworzonymi w buildApp. */ async instance=>sensorsRoutes(instance,sensorService,adminGuard,sensorWriteGuard));
-    app.register(/** Rejestruje wydzielone trasy Fastify z zależnościami i strażnikami utworzonymi w buildApp. */ async instance=>measurementsRoutes(instance,measureService));
+    app.register( async instance=>authRoutes(instance,authService,adminGuard));
+    app.register( async instance=>seriesRoutes(instance,seriesService,adminGuard));
+    app.register( async instance=>sensorsRoutes(instance,sensorService,adminGuard,sensorWriteGuard));
+    app.register( async instance=>measurementsRoutes(instance,measureService));
     const simulations=createSimulationsService(app,createSimulationsRepository(pool),createSimulationHttpClient(app,workerKey),options.loadObserved);
-    app.register(/** Rejestruje wydzielone trasy Fastify z zależnościami i strażnikami utworzonymi w buildApp. */ async instance=>simulationsRoutes(instance,simulations,adminGuard));
-    app.addHook('preClose',/** Czeka na anulowanie i sprzątnięcie symulacji przed zakończeniem serwera. */ async()=>{await simulations.close();});
+    app.register( async instance=>simulationsRoutes(instance,simulations,adminGuard));
+    app.addHook('preClose', async()=>{await simulations.close();});
   }
   return app;
 }

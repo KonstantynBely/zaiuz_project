@@ -2,7 +2,6 @@ import type { Pool } from 'pg';
 import { transaction } from '../../common/transaction.js';
 import type { SimulationParameters, SimulationState } from './simulations.schema.js';
 
-/** Wewnętrzny wiersz historii SQL; daty są obiektami Date, a parameters pochodzi z JSONB. */
 export interface SimulationRow {
   id:string;series_id:string;sensor_id:string|null;
   state:SimulationState;parameters:SimulationParameters;
@@ -11,7 +10,6 @@ export interface SimulationRow {
 }
 const projection='id::text,series_id::text,sensor_id::text,state,parameters,accepted_count,rejected_count,started_at,finished_at,error_summary';
 
-/** Buduje operacje SQL historii uruchomień i trwałej kolejki sprzątania czujników. */
 export function createSimulationsRepository(pool: Pool) {
   return {
     /**
@@ -56,13 +54,11 @@ export function createSimulationsRepository(pool: Pool) {
           error_summary=COALESCE($3,error_summary) WHERE id=$1
           AND ($2 <> 'stopping' OR state IN ('pending','running'))`,[id,state,reason??null]);
     },
-    /** Atomowo zwiększa licznik przyjętych albo odrzuconych odpowiedzi POST dla jednego uruchomienia. */
     async count(id:string,accepted:boolean) {
       await pool.query(
         accepted ? 'UPDATE simulation_runs SET accepted_count=accepted_count+1 WHERE id=$1' :
           'UPDATE simulation_runs SET rejected_count=rejected_count+1 WHERE id=$1',[id]);
     },
-    /** Oznacza istniejący wpis czujnika jako gotowy do ponawianego wyrejestrowania. */
     async requestCleanup(sensorId: string) {
       await pool.query('UPDATE simulation_sensor_cleanup SET ready=true WHERE sensor_id=$1', [sensorId]);
     },
@@ -76,14 +72,14 @@ export function createSimulationsRepository(pool: Pool) {
          WHERE q.ready=true OR EXISTS (SELECT 1 FROM simulation_runs r
            WHERE r.sensor_id=q.sensor_id AND r.state IN ('failed','completed','stopped'))
          ORDER BY q.sensor_id LIMIT 20`);
-      return rows.rows.map(/** Zwraca ID czujnika oczekującego na sprzątanie przez REST. */ row => row.sensor_id);
+      return rows.rows.map( row => row.sensor_id);
     },
     /**
      * Przed otwarciem HTTP oznacza niedokończone zadania jako failed i cofa klucze sensorów z kolejki.
      * Operacja jest transakcyjna i obejmuje całą kolejkę bazy; zakłada jeden proces wykonawcy.
      */
     async recoverOrphans() {
-      await transaction(pool, /** Oznacza przerwane zadania i unieważnia wszystkie klucze z kolejki przed jej opróżnieniem. */ async client => {
+      await transaction(pool, async client => {
         await client.query(`
           UPDATE simulation_runs SET state='failed',finished_at=now(),
             error_summary='Przerwano podczas restartu usługi'
@@ -95,5 +91,4 @@ export function createSimulationsRepository(pool: Pool) {
     },
   };
 }
-/** Interfejs repozytorium wywnioskowany z fabryki operacji SQL, wstrzykiwany do serwisu. */
 export type SimulationsRepository=ReturnType<typeof createSimulationsRepository>;

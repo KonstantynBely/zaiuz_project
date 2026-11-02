@@ -16,7 +16,7 @@ async function main() {
   const pool = createPool();
   try {
     const passwordHash = await hashPassword(password);
-    await transaction(pool, /** Aktualizuje hash konta i cofa stare tokeny bez przerwy pomiędzy tymi operacjami. */ async client => {
+    await transaction(pool, async client => {
       await client.query(
         `INSERT INTO admins(username,password_hash) VALUES($1,$2)
          ON CONFLICT (username) DO UPDATE SET password_hash=EXCLUDED.password_hash`,
@@ -31,4 +31,4 @@ async function main() {
     process.stdout.write('Konto administratora jest gotowe.\n');
   } finally { await pool.end(); }
 }
-main().catch(/** Raportuje błąd skryptu bez sekretów i ustawia niezerowy kod zakończenia procesu. */ error => { console.error('Nie udało się przygotować konta:', error instanceof Error ? error.message : String(error)); process.exitCode = 1; });
+main().catch( error => { console.error('Nie udało się przygotować konta:', error instanceof Error ? error.message : String(error)); process.exitCode = 1; });

@@ -2,7 +2,6 @@ import { ApiError } from '../../common/errors.js';
 import type { SeriesRepository, SeriesRow } from './series.repository.js';
 import type { SeriesInput } from './series.schema.js';
 
-/** Mapuje nazwy kolumn SQL na kontrakt serii i pomija opcjonalne pola NULL. */
 function asSeries(row: SeriesRow) {
   return {
     id: row.id, name: row.name, minValue: row.min_value, maxValue: row.max_value,
@@ -20,10 +19,8 @@ function validateRange(input: SeriesInput) {
   }
 }
 
-/** Udostępnia CRUD serii z walidacją zakresów i mapowaniem odmów repozytorium na błędy HTTP. */
 export function createSeriesService(repository: SeriesRepository) {
   return {
-    /** Zwraca wszystkie serie jako obiekty zgodne z publicznym kontraktem. */
     async list() { return (await repository.findAll()).map(asSeries); },
     /**
      * Zwraca publiczny opis wskazanej serii.
@@ -34,7 +31,6 @@ export function createSeriesService(repository: SeriesRepository) {
       if (!row) throw new ApiError(404, 'Nie znaleziono serii');
       return asSeries(row);
     },
-    /** Sprawdza zakres i tworzy serię, zwracając jej publiczny opis. */
     async create(input: SeriesInput) {
       validateRange(input);
       return asSeries(await repository.insert(input));
@@ -59,5 +55,4 @@ export function createSeriesService(repository: SeriesRepository) {
     },
   };
 }
-/** Interfejs serwisu wywnioskowany z jego fabryki; kontrolery zależą od niego zamiast od implementacji SQL. */
 export type SeriesService = ReturnType<typeof createSeriesService>;

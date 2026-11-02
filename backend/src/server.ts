@@ -32,8 +32,8 @@ async function main(): Promise<void> {
     await app.close();
     await pool.end();
   };
-  process.once('SIGINT', /** Rozpoczyna uporządkowane zamykanie zasobów po sygnale systemowym. */ () => { void shutdown(); });
-  process.once('SIGTERM', /** Rozpoczyna uporządkowane zamykanie zasobów po sygnale systemowym. */ () => { void shutdown(); });
+  process.once('SIGINT', () => { void shutdown(); });
+  process.once('SIGTERM', () => { void shutdown(); });
 }
 
 void main();

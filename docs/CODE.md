@@ -1,6 +1,4 @@
-# Dokumentacja kodu
-
-Funkcje i metody TypeScript/JavaScript mają komentarze JSDoc przy deklaracjach. Komponenty opisują odpowiedzialność widoku i właściciela stanu, a callbacki — wykonywaną operację lub etap cyklu asynchronicznego. Python używa docstringów z opisem argumentów, wyniku i wyjątków. Skrypty operacyjne opisują wymagane uprawnienia, wejście, skutki uboczne i ograniczenia cofania zmian.
+# Mapa kodu
 
 ## Mapa odpowiedzialności
 
@@ -20,14 +18,10 @@ Funkcje i metody TypeScript/JavaScript mają komentarze JSDoc przy deklaracjach.
 | Testy | `tests/` i `frontend/tests/`: scenariusze, atrapy i asercje; [testowanie](TESTING.md) oddziela kontrole bez bazy od integracji. |
 | Operacje serwera | `deploy/scripts/`, `server/config/`, `server/scripts/`: instalacja, aktywacja, usługi i backup. |
 
-## Zasady utrzymania komentarzy
+## Konwencje danych
 
-- Pierwsze zdanie wyjaśnia zadanie funkcji. Dalszy opis podaje założenia, skutki uboczne i istotny sposób wykonania, zamiast powtarzać każdą instrukcję.
-- Typy argumentów pozostają w TypeScript. `@param`, `@returns` i `@throws` doprecyzowują kontrakt tam, gdzie sama sygnatura nie opisuje jednostek, odpowiedzialności za zasoby lub przyczyny odmowy.
-- ID traktuje się jako wartości nieprzezroczyste. Backend sprawdza BIGINT tekstowo, aby nie utracić precyzji przez Number. Daty API wymagają jawnej strefy; prezentacja pomiarów używa UTC.
-- Interwały backendu są w milisekundach, formularz i CLI Pythona podają sekundy. Czas życia tokenu z API jest w sekundach, a expiresAt w UI w milisekundach.
-- Dokumentacja efektów i workerów obejmuje anulowanie, odrzucanie spóźnionych wyników oraz cleanup. Po dodaniu nowego timera lub połączenia należy zaktualizować opis właściciela zasobu.
-- Komentarze opisują kontrakt i działanie kodu; nie zawierają prawdziwych haseł, kluczy ani tokenów. Stan usług i danych jest częścią diagnostyki środowiska.
-- Zmiana zachowania wymaga aktualizacji opisu i odpowiednich testów. Samo dodanie komentarzy nie powinno zmieniać instrukcji wykonywanych przez program.
+- Identyfikatory z PostgreSQL BIGINT pozostają tekstem, aby nie tracić precyzji przez JavaScript Number.
+- Daty przekazywane do API zawierają strefę czasową, a daty pomiarów na pulpicie są wyświetlane w UTC.
+- Interwały backendu są w milisekundach, natomiast formularz i generator Pythona używają sekund. Czas życia sesji z API jest w sekundach, a czas wygaśnięcia w UI w milisekundach.
 
-Opis endpointów i ich rozszerzeń znajduje się w [API](API.md), a przepływ danych między modułami w [architekturze](ARCHITECTURE.md).
+Szczegóły endpointów opisuje [API](API.md), a przepływ danych [architektura](ARCHITECTURE.md).

@@ -1,10 +1,7 @@
 import { ApiError } from '../../common/errors.js';
 
-/** Rzeczywiste obserwacje temperatury METAR ze stacji lotniczych (°C). */
 const METAR_STATIONS = ['EPWA', 'EPKK', 'EPGD'] as const;
-/** Identyfikator jednej z trzech obsługiwanych stacji lotniczych. */
 export type MetarStation = typeof METAR_STATIONS[number];
-/** Rzeczywista temperatura z oryginalnym czasem obserwacji zapisanym jako ISO UTC. */
 export interface ObservedPoint { value: number; timestamp: string }
 
 /** Niezaufany rekord zewnętrznego JSON; pola unknown wymagają sprawdzenia przed użyciem. */
@@ -12,7 +9,6 @@ interface MetarRow { icaoId?: unknown; obsTime?: unknown; temp?: unknown }
 const STATIONS = new Set<string>(METAR_STATIONS);
 /** Stałe źródło obserwacji; parametrów URL nie buduje się z niezaufanego wejścia użytkownika. */
 const SOURCE_URL = 'https://aviationweather.gov/api/data/metar?ids=EPWA%2CEPKK%2CEPGD&format=json&hours=24';
-/** Czas cache w milisekundach, wspólny dla stacji pobieranych w jednym żądaniu. */
 const CACHE_TIME_MS = 60_000;
 /** Cache tylko bieżącego procesu; expires jest czasem epoch w milisekundach. */
 let cache: { expires: number; rows: MetarRow[] } | null = null;
@@ -35,7 +31,7 @@ export function parseMetarTemperatures(rows: unknown, station: MetarStation): Ob
     if (!Number.isFinite(time) || time < Date.UTC(2000, 0, 1) || time > Date.now() + 5 * 60_000) continue;
     unique.set(time, { value: item.temp, timestamp: new Date(time).toISOString() });
   }
-  return [...unique.entries()].sort(/** Porządkuje obserwacje rosnąco według czasu w kluczu mapy. */ (a, b) => a[0] - b[0]).map(/** Zwraca obserwację po uporządkowaniu mapy według czasu. */ ([, value]) => value);
+  return [...unique.entries()].sort( (a, b) => a[0] - b[0]).map( ([, value]) => value);
 }
 
 /**
@@ -45,7 +41,7 @@ export function parseMetarTemperatures(rows: unknown, station: MetarStation): Ob
  */
 async function fetchSource(): Promise<MetarRow[]> {
   const controller = new AbortController();
-  const timeout = setTimeout(/** Przerywa zbyt długo trwające pobieranie danych zewnętrznych. */ () => controller.abort(), 8000);
+  const timeout = setTimeout( () => controller.abort(), 8000);
   try {
     const response = await fetch(SOURCE_URL, {
       signal: controller.signal,
@@ -73,10 +69,10 @@ export async function loadMetarTemperatures(station: MetarStation): Promise<Obse
   if (!STATIONS.has(station)) throw new ApiError(422, 'Nieznana stacja meteorologiczna.');
   if (!cache || cache.expires < Date.now()) {
     if (!pending) {
-      pending = fetchSource().then(/** Zapisuje pobrane obserwacje w cache z nowym terminem ważności. */ rows => {
+      pending = fetchSource().then( rows => {
         cache = { rows, expires: Date.now() + CACHE_TIME_MS };
         return rows;
-      }).finally(/** Zwalnia wspólną referencję trwającego pobrania, również po błędzie źródła. */ () => { pending = null; });
+      }).finally( () => { pending = null; });
     }
     const rows = await pending;
     return parseRequired(rows, station);
@@ -84,7 +80,6 @@ export async function loadMetarTemperatures(station: MetarStation): Promise<Obse
   return parseRequired(cache.rows, station);
 }
 
-/** Wymaga przynajmniej jednej poprawnej obserwacji i wybiera do 100 najnowszych w porządku chronologicznym. */
 function parseRequired(rows: unknown, station: MetarStation): ObservedPoint[] {
   const points = parseMetarTemperatures(rows, station);
   if (points.length === 0) throw new ApiError(422, 'Brak prawidłowych obserwacji temperatury dla wybranej stacji.');

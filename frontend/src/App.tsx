@@ -13,8 +13,8 @@ import { formatDate, formatShortTime, formatValue } from './features/dashboard/f
 import { useTelemetry } from './features/dashboard/useTelemetry';
 import './styles/app.css';
 
-const AdminPanel = lazy(/** Ładuje panel administracji dopiero przy jego pierwszym wyświetleniu. */ () => import('./features/admin/AdminPanel').then(/** Dostosowuje nazwany eksport komponentu do interfejsu React.lazy wymagającego eksportu default. */ module => ({ default: module.AdminPanel })));
-const SimulationPanel = lazy(/** Ładuje moduł panelu symulacji dopiero po otwarciu tego widoku. */ () => import('./features/admin/SimulationPanel').then(/** Dostosowuje nazwany eksport komponentu do interfejsu React.lazy wymagającego eksportu default. */ module => ({ default: module.SimulationPanel })));
+const AdminPanel = lazy( () => import('./features/admin/AdminPanel').then( module => ({ default: module.AdminPanel })));
+const SimulationPanel = lazy( () => import('./features/admin/SimulationPanel').then( module => ({ default: module.SimulationPanel })));
 
 const timeRanges: { value: MeasurementRange; label: string }[] = [
   { value: 'all', label: 'Całość' }, { value: '24h', label: '24 h' },
@@ -24,7 +24,6 @@ const timeRanges: { value: MeasurementRange; label: string }[] = [
 const { series: previewSeries, measurements: previewMeasurements } = import.meta.env.DEV
   ? createPreviewData() : { series: [], measurements: [] };
 
-/** Przewija do wskazanej sekcji; respektuje preferencję ograniczenia ruchu i ignoruje nieistniejące ID. */
 function scrollToSection(id: string) {
   document.getElementById(id)?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
 }
@@ -34,7 +33,7 @@ function scrollToSection(id: string) {
  * Łączy useTelemetry z sesją administratora i dostępną nawigacją mobilną; próbki DEV nie trafiają do API.
  */
 function App() {
-  const [preview, setPreview] = useState(/** Włącza początkowy podgląd tylko w DEV i przy parametrze preview w adresie. */ () => import.meta.env.DEV && new URLSearchParams(window.location.search).has('preview'));
+  const [preview, setPreview] = useState( () => import.meta.env.DEV && new URLSearchParams(window.location.search).has('preview'));
   const [reload, setReload] = useState(0);
   const [range, setRange] = useState<MeasurementRange>('all');
   const [draftFrom, setDraftFrom] = useState('');
@@ -48,18 +47,15 @@ function App() {
     useTelemetry({ preview, reload, setReload, range, customDates, hidden });
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [compact, setCompact] = useState(/** Odczytuje początkowy układ mobilny z matchMedia dopiero przy montowaniu komponentu. */ () => window.matchMedia('(max-width: 940px)').matches);
+  const [compact, setCompact] = useState( () => window.matchMedia('(max-width: 940px)').matches);
   const menuButton = useRef<HTMLButtonElement>(null);
   const sidebarElement = useRef<HTMLElement>(null);
-  /** Obserwuje breakpoint 940 px i zamyka menu przy zmianie układu; przy odmontowaniu usuwa listener. */
   useEffect(() => {
     const breakpoint = window.matchMedia('(max-width: 940px)');
-    /** Synchronizuje breakpoint menu z matchMedia i zamyka panel po zmianie szerokości ekranu. */
     const update = () => { setCompact(breakpoint.matches); setMenuOpen(false); };
     breakpoint.addEventListener('change', update);
-    return /** Usuwa listenery tego efektu oraz ewentualną oczekującą klatkę animacji. */ () => breakpoint.removeEventListener('change', update);
+    return () => breakpoint.removeEventListener('change', update);
   }, []);
-  /** Na czas otwarcia mobilnego menu ustawia fokus i obsługę Escape/Tab; usuwa listener po zamknięciu. */
   useEffect(() => {
     if (!compact || !menuOpen) return;
     const sidebar = sidebarElement.current;
@@ -69,7 +65,7 @@ function App() {
       if (event.key === 'Escape') {
         event.preventDefault();
         setMenuOpen(false);
-        window.requestAnimationFrame(/** Przywraca fokus przyciskowi menu po zastosowaniu zmiany widoku. */ () => menuButton.current?.focus());
+        window.requestAnimationFrame( () => menuButton.current?.focus());
       }
       if (event.key !== 'Tab' || !sidebar) return;
       const tabbables = Array.from(sidebar.querySelectorAll<HTMLElement>('a[href], button:not(:disabled)'));
@@ -78,55 +74,46 @@ function App() {
       if (!event.shiftKey && document.activeElement === tabbables[tabbables.length - 1]) { event.preventDefault(); tabbables[0]?.focus(); }
     };
     window.addEventListener('keydown', onKey);
-    return /** Usuwa listenery tego efektu oraz ewentualną oczekującą klatkę animacji. */ () => window.removeEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
   }, [compact, menuOpen]);
   const [activeSection, setActiveSection] = useState('dashboard');
   const [screen, setScreen] = useState<'dashboard' | AdminView | 'simulations'>('dashboard');
-  /** Przełącza aplikację na widok logowania po wygaśnięciu sesji. */
   const showLogin = useCallback(() => setScreen('account'), []);
   const { session, login, logout, clear } = useAdminSession(showLogin);
-  /** Zapisuje token w sesji rodzica i otwiera zarządzanie seriami. */
   const onLogin = useCallback((token: string, expiresIn: number) => {
     login(token, expiresIn);
     setScreen('series');
   }, [login]);
-  /** Czyści nieaktualną sesję i otwiera formularz ponownego logowania. */
   const onUnauthorized = useCallback(() => {
     clear();
     showLogin();
   }, [clear, showLogin]);
-  /** Zwiększa generację odczytu telemetrii po zmianie danych administracyjnych. */
-  const onSeriesChanged = useCallback(() => { setReload(/** Zwiększa licznik odświeżenia względem ostatniego zatwierdzonego stanu React. */ value => value + 1); }, []);
-  /** Kończy lokalną sesję i wraca na publiczny pulpit. */
+  const onSeriesChanged = useCallback(() => { setReload( value => value + 1); }, []);
   const onLogout = useCallback(() => {
     logout();
     setScreen('dashboard');
   }, [logout]);
-  /** Przełącza widok administracyjny, zamyka menu i w razie preview wraca do rzeczywistego API. */
   function openAdmin(view: AdminView | 'simulations') {
     setScreen(view);
     setMenuOpen(false);
-    if (preview) { setPreview(false); setStatus('loading'); setReload(/** Zwiększa licznik odświeżenia względem ostatniego zatwierdzonego stanu React. */ value => value + 1); }
+    if (preview) { setPreview(false); setStatus('loading'); setReload( value => value + 1); }
   }
-  /** Pokazuje pulpit i zamyka mobilne menu; przewinięcie do kotwicy wykonuje efekt widoku. */
   function openDashboard() {
     setScreen('dashboard');
     setMenuOpen(false);
   }
-  /** Po powrocie na pulpit przewija do rozpoznanej kotwicy z URL; anuluje nieaktualną klatkę animacji. */
   useEffect(() => {
     if (screen !== 'dashboard') return;
     const anchor = window.location.hash.replace('#', '');
     if (!['dashboard', 'telemetry', 'records'].includes(anchor)) return;
-    const frame = window.requestAnimationFrame(/** Przewija do kotwicy po wyrenderowaniu sekcji pulpitu. */ () => scrollToSection(anchor));
-    return /** Anuluje zaplanowane przewinięcie po zmianie widoku. */ () => window.cancelAnimationFrame(frame);
+    const frame = window.requestAnimationFrame( () => scrollToSection(anchor));
+    return () => window.cancelAnimationFrame(frame);
   }, [screen]);
 
   /** Śledzi przewijanie i rozmiar pulpitu, aktualizując aktywną sekcję menu najwyżej raz na klatkę. */
   useEffect(() => {
     if (screen !== 'dashboard') return;
     let frame = 0;
-    /** Wyznacza aktywną pozycję menu na podstawie sekcji w górnej części ekranu i końca strony. */
     const updateSection = () => {
       frame = 0;
       const sections = ['dashboard', 'telemetry', 'records'];
@@ -142,7 +129,6 @@ function App() {
       }
       setActiveSection(current);
     };
-    /** Łączy wiele zdarzeń przewijania lub resize w pojedynczą aktualizację requestAnimationFrame. */
     const scheduleUpdate = () => {
       if (!frame) frame = window.requestAnimationFrame(updateSection);
     };
@@ -152,7 +138,7 @@ function App() {
     const main = document.getElementById('dashboard');
     if (main) observer.observe(main);
     scheduleUpdate();
-    return /** Odłącza obserwator rozmiaru po odmontowaniu wykresu. */ () => {
+    return () => {
       window.cancelAnimationFrame(frame);
       window.removeEventListener('scroll', scheduleUpdate);
       window.removeEventListener('resize', scheduleUpdate);
@@ -162,51 +148,46 @@ function App() {
 
   const series = preview ? previewSeries : liveSeries;
   const measurements = preview ? previewMeasurements : liveMeasurements;
-  /** Wylicza listę serii, które użytkownik pozostawił widoczne. */
-  const visibleSeries = useMemo(() => series.filter(/** Pomija serie ukryte przez użytkownika w aktywnym filtrze. */ item => !hidden.includes(String(item.id))), [series, hidden]);
+  const visibleSeries = useMemo(() => series.filter( item => !hidden.includes(String(item.id))), [series, hidden]);
   /** Wylicza próbki w aktywnym przedziale czasu, w tym oknie przesuwanym względem lokalnego zegara. */
   const timeFiltered = useMemo(() => {
     if (range === 'all') return measurements;
     if (range === 'custom') {
       const from = customDates.from ? Date.parse(customDates.from) : -Infinity;
       const to = customDates.to ? Date.parse(customDates.to) : Infinity;
-      return measurements.filter(/** Pozostawia pomiary mieszczące się w aktywnym przedziale czasu. */ item => {
+      return measurements.filter( item => {
         const stamp = Date.parse(item.timestamp);
         return stamp >= from && stamp <= to;
       });
     }
     const days = range === '24h' ? 1 : range === '7d' ? 7 : 30;
     const cutoff = now - days * 86_400_000;
-    return measurements.filter(/** Pozostawia pomiary mieszczące się w aktywnym przedziale czasu. */ item => new Date(item.timestamp).getTime() >= cutoff);
+    return measurements.filter( item => new Date(item.timestamp).getTime() >= cutoff);
   }, [measurements, range, customDates, now]);
-  /** Pozostawia w czasowej migawce wyłącznie pomiary aktualnie widocznych serii. */
   const filtered = useMemo(
-    () => timeFiltered.filter(/** Dopasowuje identyfikatory jako tekst, aby obsłużyć liczbowe i tekstowe ID kontraktu. */ item => visibleSeries.some(/** Dopasowuje identyfikatory jako tekst, aby obsłużyć liczbowe i tekstowe ID kontraktu. */ s => String(s.id) === String(item.seriesId))),
+    () => timeFiltered.filter( item => visibleSeries.some( s => String(s.id) === String(item.seriesId))),
     [timeFiltered, visibleSeries],
   );
   const lastMeasurement = measurements[0];
 
-  const activeSelected = filtered.some(/** Sprawdza zgodność ID próbki z zaznaczeniem na wykresie i w tabeli. */ item => String(item.id) === selectedId) ? selectedId : null;
+  const activeSelected = filtered.some( item => String(item.id) === selectedId) ? selectedId : null;
   const chartSeries = chartMode === 'raw' ?
-    visibleSeries.filter(/** Dopasowuje identyfikatory jako tekst, aby obsłużyć liczbowe i tekstowe ID kontraktu. */ item => String(item.id) === (visibleSeries.some(/** Dopasowuje identyfikatory jako tekst, aby obsłużyć liczbowe i tekstowe ID kontraktu. */ s => String(s.id) === rawSeriesId) ? rawSeriesId : String(visibleSeries[0]?.id))) : visibleSeries;
-  /** Przełącza widoczność serii i czyści zaznaczenie pomiaru, które mogłoby wypaść z filtra. */
+    visibleSeries.filter( item => String(item.id) === (visibleSeries.some( s => String(s.id) === rawSeriesId) ? rawSeriesId : String(visibleSeries[0]?.id))) : visibleSeries;
   function toggleSeries(id: string) {
-    setHidden(/** Przełącza ID w zbiorze ukrytych serii na podstawie najnowszego stanu React. */ items => items.includes(id) ? items.filter(/** Usuwa wskazany identyfikator ze zbioru ukrytych serii. */ item => item !== id) : [...items, id]);
+    setHidden( items => items.includes(id) ? items.filter( item => item !== id) : [...items, id]);
     setSelectedId(null);
   }
-  /** Włącza lokalne próbki DEV, resetując zakres, ukryte serie i zaznaczenie. */
   function enablePreview() {
     setPreview(true);
     setSelectedId(null);
     setRange('all');
     setHidden([]);
   }
-  /** Wyłącza podgląd, ustawia stan ładowania i inicjuje nową generację odczytów API. */
   function returnToApi() {
     setPreview(false);
     setStatus('loading');
     setSelectedId(null);
-    setReload(/** Zwiększa licznik odświeżenia względem ostatniego zatwierdzonego stanu React. */ value => value + 1);
+    setReload( value => value + 1);
   }
   const isReady = status === 'ready';
   /**
@@ -232,7 +213,7 @@ function App() {
   return (
     <div className="app-shell">
       <a className="skip-link" href="#dashboard">Przejdź do głównej treści</a>
-      <button className={'scrim ' + (menuOpen ? 'is-open' : '')} aria-label="Zamknij menu" tabIndex={-1} onClick={/** Zamyka menu po kliknięciu tła i przywraca fokus przyciskowi otwarcia. */ () => { setMenuOpen(false); menuButton.current?.focus(); }} />
+      <button className={'scrim ' + (menuOpen ? 'is-open' : '')} aria-label="Zamknij menu" tabIndex={-1} onClick={ () => { setMenuOpen(false); menuButton.current?.focus(); }} />
       <Sidebar
         sidebarElement={sidebarElement}
         menuOpen={menuOpen}
@@ -240,20 +221,20 @@ function App() {
         signedIn={Boolean(session)}
         screen={screen}
         activeSection={activeSection}
-        onDashboardSection={/** Wraca na dashboard i inicjuje odświeżenie jego danych. */ section => {
+        onDashboardSection={ section => {
           setActiveSection(section);
           openDashboard();
         }}
         onAdminSection={openAdmin}
-        onLogout={/** Kończy sesję i zamyka mobilną nawigację. */ () => { onLogout(); setMenuOpen(false); }}
+        onLogout={ () => { onLogout(); setMenuOpen(false); }}
       />
       <div className="workspace" inert={compact && menuOpen} aria-hidden={compact && menuOpen}>
         {screen === 'dashboard' && <div className="dashboard-landscape" aria-hidden="true"><img src={roverHero} width={2240} height={550} fetchPriority="high" alt=""/></div>}
-        <button ref={menuButton} className="mobile-menu" type="button" aria-label={menuOpen ? 'Zamknij menu' : 'Otwórz menu'} aria-controls="mission-navigation" aria-expanded={menuOpen} onClick={/** Przełącza widoczność mobilnego menu. */ () => setMenuOpen(/** Odwraca aktualny stan otwarcia menu, nie korzystając z nieaktualnej wartości zamknięcia. */ value => !value)}><Icon name="menu"/></button>
+        <button ref={menuButton} className="mobile-menu" type="button" aria-label={menuOpen ? 'Zamknij menu' : 'Otwórz menu'} aria-controls="mission-navigation" aria-expanded={menuOpen} onClick={ () => setMenuOpen( value => !value)}><Icon name="menu"/></button>
         <main className="main-content" id="dashboard" tabIndex={-1}>
           <Suspense fallback={<div className="loading-text" role="status">Wczytywanie panelu…</div>}>
           {screen === 'simulations' && session ? (
-            <SimulationPanel token={session.token} onUnauthorized={onUnauthorized} onMeasurementsChanged={onSeriesChanged} onOpenDashboard={/** Wraca na dashboard i inicjuje odświeżenie jego danych. */ () => { openDashboard(); setReload(/** Zwiększa licznik odświeżenia względem ostatniego zatwierdzonego stanu React. */ value => value + 1); }}/>
+            <SimulationPanel token={session.token} onUnauthorized={onUnauthorized} onMeasurementsChanged={onSeriesChanged} onOpenDashboard={ () => { openDashboard(); setReload( value => value + 1); }}/>
           ) : screen !== 'dashboard' ? (
             <AdminPanel view={screen === 'simulations' ? 'account' : screen} token={session?.token ?? null} onLogin={onLogin} onLogout={onLogout} onUnauthorized={onUnauthorized} onSeriesChanged={onSeriesChanged}/>
           ) : (<>
@@ -273,27 +254,27 @@ function App() {
                 <div><h2 id="chart-heading">Wykres pomiarów</h2></div>
                 <div className="panel-controls">
                   <div className="range-tabs" role="group" aria-label="Zakres czasu">
-                    {timeRanges.map(/** Renderuje przycisk filtra z aktualnym stanem aria-pressed. */ option => <button key={option.value} type="button" aria-pressed={range === option.value} onClick={/** Wybiera szybki zakres czasu i czyści błąd formularza oraz zaznaczony pomiar. */ () => { setRange(option.value); setDateError(''); setSelectedId(null) }}>{option.label}</button>)}
+                    {timeRanges.map( option => <button key={option.value} type="button" aria-pressed={range === option.value} onClick={ () => { setRange(option.value); setDateError(''); setSelectedId(null) }}>{option.label}</button>)}
                   </div>
-                  <button className="icon-button" aria-label="Odśwież pomiary" title="Odśwież pomiary" type="button" onClick={/** Odświeża odczyty API i ustawia ładowanie; w preview nie wysyła żądania. */ () => { if (!preview) { setStatus('loading'); setReload(/** Zwiększa licznik odświeżenia względem ostatniego zatwierdzonego stanu React. */ value => value + 1); } }} disabled={preview || status === 'loading'}><Icon name="refresh" size={15}/></button>
+                  <button className="icon-button" aria-label="Odśwież pomiary" title="Odśwież pomiary" type="button" onClick={ () => { if (!preview) { setStatus('loading'); setReload( value => value + 1); } }} disabled={preview || status === 'loading'}><Icon name="refresh" size={15}/></button>
                 </div>
               </div>
               <form className="date-range-form" onSubmit={applyDates} aria-label="Własny przedział dat">
-                <label>Od <input type="datetime-local" aria-label="Od (czas lokalny)" value={draftFrom} onChange={/** Aktualizuje roboczą datę początku w stanie formularza. */ event => setDraftFrom(event.target.value)}/></label>
-                <label>Do <input type="datetime-local" aria-label="Do (czas lokalny)" value={draftTo} onChange={/** Aktualizuje roboczą datę końca w stanie formularza. */ event => setDraftTo(event.target.value)}/></label>
+                <label>Od <input type="datetime-local" aria-label="Od (czas lokalny)" value={draftFrom} onChange={ event => setDraftFrom(event.target.value)}/></label>
+                <label>Do <input type="datetime-local" aria-label="Do (czas lokalny)" value={draftTo} onChange={ event => setDraftTo(event.target.value)}/></label>
                 <button className="section-action date-apply" type="submit">Zastosuj daty</button>
                 <span className="date-help">Daty w czasie lokalnym</span>
                 {dateError && <p className="date-error" role="alert">{dateError}</p>}
               </form>
               <div className="series-toggles" role="group" aria-label="Widoczne serie">
-                {series.map(/** Renderuje przycisk filtra z aktualnym stanem aria-pressed. */ (item, index) => <button key={String(item.id)} className="series-toggle" type="button" aria-pressed={!hidden.includes(String(item.id))} onClick={/** Przełącza widoczność wskazanej serii na wykresie i w tabeli. */ () => toggleSeries(String(item.id))}><span style={{ color: item.color }}>{item.icon ? <SeriesIcon value={item.icon} size={16}/> : <span className="legend-dot" style={{ display: 'block', backgroundColor: item.color }}/>}</span><span className={'series-glyph style-' + (index % 4)} aria-hidden="true"/> {item.name}</button>)}
+                {series.map( (item, index) => <button key={String(item.id)} className="series-toggle" type="button" aria-pressed={!hidden.includes(String(item.id))} onClick={ () => toggleSeries(String(item.id))}><span style={{ color: item.color }}>{item.icon ? <SeriesIcon value={item.icon} size={16}/> : <span className="legend-dot" style={{ display: 'block', backgroundColor: item.color }}/>}</span><span className={'series-glyph style-' + (index % 4)} aria-hidden="true"/> {item.name}</button>)}
               </div>
               <div className="chart-mode-controls">
                 <div className="range-tabs" role="group" aria-label="Rodzaj skali wykresu">
-                  <button type="button" aria-pressed={chartMode === 'percent'} onClick={/** Aktualizuje rodzaj skali wykresu w stanie formularza. */ () => setChartMode('percent')}>Porównanie %</button>
-                  <button type="button" aria-pressed={chartMode === 'raw'} onClick={/** Aktualizuje rodzaj skali wykresu w stanie formularza. */ () => setChartMode('raw')}>Wartości rzeczywiste</button>
+                  <button type="button" aria-pressed={chartMode === 'percent'} onClick={ () => setChartMode('percent')}>Porównanie %</button>
+                  <button type="button" aria-pressed={chartMode === 'raw'} onClick={ () => setChartMode('raw')}>Wartości rzeczywiste</button>
                 </div>
-                {chartMode === 'raw' && <label className="raw-series-select">Seria <select aria-label="Seria do wykresu rzeczywistych wartości" value={visibleSeries.some(/** Dopasowuje identyfikatory jako tekst, aby obsłużyć liczbowe i tekstowe ID kontraktu. */ s => String(s.id) === rawSeriesId) ? rawSeriesId : String(visibleSeries[0]?.id ?? '')} onChange={/** Aktualizuje serię skali rzeczywistej w stanie formularza. */ event => setRawSeriesId(event.target.value)}>{visibleSeries.map(/** Tworzy opcję wyboru z identyfikatorem, nazwą i ewentualną jednostką serii. */ item => <option key={String(item.id)} value={String(item.id)}>{item.name} ({item.unit || 'bez jednostki'})</option>)}</select></label>}
+                {chartMode === 'raw' && <label className="raw-series-select">Seria <select aria-label="Seria do wykresu rzeczywistych wartości" value={visibleSeries.some( s => String(s.id) === rawSeriesId) ? rawSeriesId : String(visibleSeries[0]?.id ?? '')} onChange={ event => setRawSeriesId(event.target.value)}>{visibleSeries.map( item => <option key={String(item.id)} value={String(item.id)}>{item.name} ({item.unit || 'bez jednostki'})</option>)}</select></label>}
               </div>
               <div className="chart-body" aria-busy={status === 'loading' && !preview}>
               {status === 'loading' && !preview ? <div className="loading-text" role="status">Pobieranie danych telemetrycznych…</div> :
@@ -305,9 +286,9 @@ function App() {
             <aside className="panel signal-panel" id="series" aria-labelledby="series-heading">
               <div className="panel-heading"><h2 id="series-heading">Ostatnie wartości serii</h2></div>
               <div className="signal-list">
-                {series.length === 0 ? <p className="signal-empty">{status === 'loading' ? 'Wczytywanie serii…' : 'Brak serii do wyświetlenia.'}</p> : series.map(/** Dobiera ostatni odczyt i błąd danej serii do jej kafelka podsumowania. */ item => {
+                {series.length === 0 ? <p className="signal-empty">{status === 'loading' ? 'Wczytywanie serii…' : 'Brak serii do wyświetlenia.'}</p> : series.map( item => {
                   const last = preview
-                    ? previewMeasurements.find(/** Dopasowuje identyfikatory jako tekst, aby obsłużyć liczbowe i tekstowe ID kontraktu. */ point => String(point.seriesId) === String(item.id))
+                    ? previewMeasurements.find( point => String(point.seriesId) === String(item.id))
                     : latestBySeries[String(item.id)];
                   const failed = !preview && latestErrors[String(item.id)];
                   return <div key={String(item.id)} className="signal-item">
@@ -327,7 +308,7 @@ function App() {
             visibleSeries={visibleSeries}
             filtered={filtered}
             selectedId={activeSelected}
-            onSelect={/** Zaznacza wskazany pomiar i w trybie raw wybiera odpowiadającą mu serię. */ (id, seriesId) => {
+            onSelect={ (id, seriesId) => {
               setSelectedId(id);
               if (chartMode === 'raw') setRawSeriesId(seriesId);
             }}

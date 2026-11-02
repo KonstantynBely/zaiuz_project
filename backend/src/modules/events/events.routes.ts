@@ -6,7 +6,7 @@ import type { EventsService } from './events.service.js';
  * Przejmuje surową odpowiedź HTTP, wysyła heartbeat co 15 s i usuwa klienta po rozłączeniu.
  */
 export async function eventsRoutes(app:FastifyInstance,events:EventsService):Promise<void> {
-  app.get('/api/events',/** Otwiera odpowiedź event-stream, rejestruje odbiorcę i uruchamia heartbeat do czasu rozłączenia. */ async(_request,reply)=>{
+  app.get('/api/events', async(_request,reply)=>{
     reply.hijack();
     const response=reply.raw;
     response.writeHead(200,{
@@ -18,10 +18,10 @@ export async function eventsRoutes(app:FastifyInstance,events:EventsService):Pro
     });
     response.write(': connected\n\n');
     events.register(response);
-    const heartbeat=setInterval(/** Wysyła komentarz heartbeat tylko do nadal otwartego połączenia SSE. */ ()=>{
+    const heartbeat=setInterval( ()=>{
       if(!response.destroyed && !response.writableEnded)response.write(': ping\n\n');
     },15000);
     heartbeat.unref();
-    response.once('close',/** Po zamknięciu odpowiedzi usuwa heartbeat i wyrejestrowuje odbiorcę SSE. */ ()=>{clearInterval(heartbeat);events.unregister(response);});
+    response.once('close', ()=>{clearInterval(heartbeat);events.unregister(response);});
   });
 }
