@@ -192,8 +192,9 @@ a { color: inherit; text-decoration: none; }
   .data-table td, .data-table th { padding: 13px 15px; }
   .footer { line-height: 1.5; }
   .date-range-form, .chart-mode-controls { padding-left: 16px; padding-right: 16px; }
-  .date-range-form label { flex: 1 1 145px; }
-  .date-range-form input { width: 100%; }
+  /* Pola datetime-local potrzebują miejsca na natywne kontrolki daty i czasu. */
+  .date-range-form label { flex: 1 1 220px; }
+  .date-range-form input { min-width: 0; width: 100%; }
   .date-apply { width: 100%; justify-content: center; }
   .chart-mode-controls { justify-content: flex-start; }
   .raw-series-select { flex-wrap: wrap; }
