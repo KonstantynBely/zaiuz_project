@@ -1,20 +1,31 @@
 import type { FastifyInstance } from 'fastify';
 import { ApiError } from '../../common/errors.js';
 
+/** Minimalny opis serii potrzebny workerowi do sprawdzenia zakresu i zgodności jednostki METAR. */
 interface SeriesDetails { minValue: number; maxValue: number; unit?: string | null }
+/** Jednorazowy wynik rejestracji lokalnego sensora, przechowywany w pamięci workera. */
 interface RegisteredSensor { id: string; apiKey: string }
 
 /**
- * Wszystkie operacje na czujniku symulacji idą po HTTP do zwykłych endpointów REST.
- * Token procesu nie jest hasłem administratora i nigdy nie trafia do przeglądarki ani bazy.
+ * Buduje klienta lokalnych endpointów REST używanych przez worker symulacji.
+ * Klucz procesu wysyła tylko przy tworzeniu i usuwaniu czujników, bez przechowywania tokenu administratora.
  */
 export function createSimulationHttpClient(app: FastifyInstance, workerKey: string) {
+  /**
+   * Wyznacza adres loopback z rzeczywiście nasłuchującego portu Fastify.
+   * @throws ApiError 503, gdy instancja nie udostępnia serwera TCP.
+   */
   function origin(): string {
     const address = app.server.address();
     if (!address || typeof address === 'string') throw new ApiError(503, 'REST API nie jest gotowe.');
     return `http://127.0.0.1:${address.port}`;
   }
 
+  /**
+   * Wysyła lokalne żądanie z timeoutem 4 s, nagłówkami JSON i opcjonalnym kluczem workera.
+   * @returns Surowa odpowiedź HTTP; wywołujący musi odczytać body.
+   * @throws ApiError 502 przy problemie połączenia.
+   */
   async function request(path: string, method: 'GET' | 'POST' | 'DELETE',
     body?: Record<string, unknown>, internal = false): Promise<Response> {
     try {
@@ -33,6 +44,10 @@ export function createSimulationHttpClient(app: FastifyInstance, workerKey: stri
     }
   }
 
+  /**
+   * Odczytuje bezpieczny opis odmowy lokalnego API i rzuca błąd domenowy.
+   * Zachowuje 404/409/422; inne statusy mapuje na 502, aby odmowa klucza workera nie wylogowała operatora.
+   */
   async function problem(response: Response): Promise<never> {
     let detail = '';
     try {
@@ -47,6 +62,7 @@ export function createSimulationHttpClient(app: FastifyInstance, workerKey: stri
   }
 
   return {
+    /** Pobiera przez publiczne REST granice i jednostkę serii oraz sprawdza kształt odpowiedzi. */
     async getSeries(id: string): Promise<SeriesDetails> {
       const response = await request('/api/series/' + encodeURIComponent(id), 'GET');
       if (!response.ok) return problem(response);
@@ -58,6 +74,10 @@ export function createSimulationHttpClient(app: FastifyInstance, workerKey: stri
       }
       return value as SeriesDetails;
     },
+    /**
+     * Rejestruje dedykowany czujnik przez REST i sprawdza tekstowe ID oraz 64-znakowy klucz.
+     * @returns Sekret tylko do pamięci wykonawcy; nie wolno umieszczać go w opisie symulacji.
+     */
     async registerSensor(name: string, seriesId: string): Promise<RegisteredSensor> {
       const response = await request('/api/sensors', 'POST', { name, seriesId }, true);
       if (response.status !== 201) return problem(response);
@@ -70,6 +90,10 @@ export function createSimulationHttpClient(app: FastifyInstance, workerKey: stri
       }
       return { id: value.id, apiKey: value.apiKey };
     },
+    /**
+     * Wyrejestrowuje czujnik przez REST; 204 i 404 traktuje jako osiągnięty stan końcowy.
+     * Błędy komunikacji ponawia do trzech prób z krótkim opóźnieniem; trwałą kolejkę obsługuje serwis.
+     */
     async revokeSensor(id: string): Promise<void> {
       // Podczas kończenia zadania przejściowy błąd sieci nie powinien pozostawiać aktywnego klucza.
       for (let attempt = 0; attempt < 3; attempt++) {
@@ -80,7 +104,7 @@ export function createSimulationHttpClient(app: FastifyInstance, workerKey: stri
           await problem(response);
         } catch (error) {
           if (attempt === 2 || (error instanceof ApiError && error.status !== 502)) throw error;
-          await new Promise(resolve => setTimeout(resolve, (attempt + 1) * 100));
+          await new Promise(/** Kończy krótkie opóźnienie pomiędzy kolejnymi próbami lokalnego REST. */ resolve => setTimeout(resolve, (attempt + 1) * 100));
         }
       }
     },

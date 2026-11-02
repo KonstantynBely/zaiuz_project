@@ -1,11 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { hashPassword } from '../../backend/src/modules/auth/auth.service.js';
-import { createPool } from '../../backend/src/database/pool.js';
+import { createTestPool } from '../helpers/testDatabase.js';
 import { buildApp } from '../../backend/src/app.js';
 
+/** Sprawdza scenariusz: API: logowanie, serie, czujniki, pomiary i uprawnienia na TimescaleDB. */
 test('API: logowanie, serie, czujniki, pomiary i uprawnienia na TimescaleDB',async()=>{
-  const pool=createPool();
+  const pool=createTestPool();
   const app=buildApp({pool});
   const unique=`e2e_${Date.now()}_${Math.floor(Math.random()*1e9)}`;
   let adminId:string|null=null;
@@ -15,7 +16,8 @@ test('API: logowanie, serie, czujniki, pomiary i uprawnienia na TimescaleDB',asy
       'INSERT INTO admins(username,password_hash) VALUES($1,$2) RETURNING id::text',
       [unique,await hashPassword('secret-for-tests-2026')]);
     adminId=inserted.rows[0]!.id;
-    const call=(method:'GET'|'POST'|'PUT'|'DELETE',url:string,token?:string,payload?:unknown)=>app.inject({
+    /** Wysyła żądanie przez Fastify.inject do instancji testowej bez otwierania portu. */
+    const call=(method:'GET'|'POST'|'PUT'|'DELETE',url:string,token?:string,payload?:object)=>app.inject({
       method,url,headers:{...(token?{authorization:`Bearer ${token}`}:{})},
       ...(payload===undefined?{}:{payload}),
     });
@@ -48,7 +50,8 @@ test('API: logowanie, serie, czujniki, pomiary i uprawnienia na TimescaleDB',asy
     assert.equal(JSON.stringify(sensors.json()).includes(key),false);
     const noKey=await call('POST','/api/measurements',undefined,{value:12});
     assert.equal(noKey.statusCode,401);
-    const post=(payload:unknown,k=key)=>app.inject({method:'POST',url:'/api/measurements',headers:{'x-api-key':k},payload});
+    /** Wysyła testowy pomiar z wybranym kluczem przez Fastify.inject. */
+    const post=(payload:object,k=key)=>app.inject({method:'POST',url:'/api/measurements',headers:{'x-api-key':k},payload});
     assert.equal((await post({value:-41})).statusCode,422);
     assert.equal((await post({value:20,timestamp:new Date(Date.now()+3600000).toISOString()})).statusCode,422);
     const boundaries=[];

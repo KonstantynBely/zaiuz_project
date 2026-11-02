@@ -26,21 +26,31 @@ import { createEventsService } from './modules/events/events.service.js';
 import { eventsRoutes } from './modules/events/events.routes.js';
 
 declare module 'fastify' {
+  /** Rozszerza żądanie Fastify o znacznik uwierzytelnionego lokalnego workera symulacji. */
   interface FastifyRequest { simulationWorker: boolean }
 }
 
-/** Composition root: zależności można wstrzykiwać w testach bez tworzenia globalnego Pool. */
+/**
+ * Składa instancję Fastify, rejestruje trasy, negocjację formatów i obsługę błędów.
+ * Pula jest wstrzykiwana; bez niej dostępne są tylko healthcheck i strumień zdarzeń. Funkcja nie otwiera portu HTTP.
+ * @param options Zależności aplikacji; loadObserved pozwala zastąpić źródło METAR w testach.
+ * @returns Instancja wymagająca listen() lub inject(); close() zamyka SSE i wykonawcę symulacji.
+ */
 export function buildApp(options:{pool?:Pool;loadObserved?:(station:MetarStation)=>Promise<ObservedPoint[]>}={}):FastifyInstance {
-  const app=Fastify({forceCloseConnections:'idle',logger:{redact:[
-    'req.headers.authorization','req.headers.x-api-key','request.headers.authorization',
-    'request.headers.x-api-key','req.headers.x-roversense-worker-key',
-    'request.headers.x-roversense-worker-key','res.headers.set-cookie',
-  ]}});
+  const app=Fastify({
+    ajv: { customOptions: { coerceTypes: false } },
+    forceCloseConnections: 'idle',
+    logger: { redact: [
+      'req.headers.authorization','req.headers.x-api-key','request.headers.authorization',
+      'request.headers.x-api-key','req.headers.x-roversense-worker-key',
+      'request.headers.x-roversense-worker-key','res.headers.set-cookie',
+    ] },
+  });
   registerErrorHandling(app);
   app.decorateRequest('simulationWorker', false);
-  app.addHook('onRequest',async(request,reply)=>{
+  app.addHook('onRequest',/** Sprawdza negocjację formatu API i Content-Type przed handlerami, z osobnym dopuszczeniem SSE. */ async(request,reply)=>{
     const sse=request.url.split('?')[0]==='/api/events' && request.method==='GET' &&
-      (request.headers.accept??'').split(',').some(x=>x.trim().startsWith('text/event-stream'));
+      (request.headers.accept??'').split(',').some(/** Rozpoznaje żądanie formatu strumienia SSE w nagłówku Accept. */ x=>x.trim().startsWith('text/event-stream'));
     if(request.url.startsWith('/api/')&&!sse&&!acceptsJson(request.headers.accept)) {
       throw new ApiError(406,'Żądany format odpowiedzi nie jest dostępny');
     }
@@ -50,22 +60,30 @@ export function buildApp(options:{pool?:Pool;loadObserved?:(station:MetarStation
     }
     reply.header('X-Content-Type-Options','nosniff');
   });
-  app.addHook('onSend',async(_request,reply,payload)=>{
+  app.addHook('onSend',/** Dodaje nosniff również do odpowiedzi błędów i odpowiedzi spoza zwykłych handlerów. */ async(_request,reply,payload)=>{
     reply.header('X-Content-Type-Options','nosniff');
     return payload;
   });
   app.register(healthRoutes);
   const events=createEventsService();
-  app.register(async instance=>eventsRoutes(instance,events));
-  app.addHook('preClose',async()=>{events.close();});
+  app.register(/** Rejestruje wydzielone trasy Fastify z zależnościami i strażnikami utworzonymi w buildApp. */ async instance=>eventsRoutes(instance,events));
+  app.addHook('preClose',/** Zamyka otwarte odpowiedzi SSE przed zakończeniem serwera. */ async()=>{events.close();});
   if(options.pool) {
     const pool=options.pool;
     const authService=createAuthService(createAuthRepository(pool));
+    /**
+     * Wymaga ważnej sesji Bearer przed operacją administracyjną.
+     * @throws ApiError 401 przy braku, wygaśnięciu lub unieważnieniu tokenu.
+     */
     const adminGuard:preHandlerHookHandler=async request=>{await authService.requireAdmin(bearerToken(request));};
     // Klucz jest jednorazowy dla procesu, zna go tylko lokalny klient REST symulatora.
     // Dostęp wyłącznie przez loopback i wyłącznie do POST/DELETE czujników.
     const workerKey=randomBytes(32).toString('hex');
     const workerKeyBytes=Buffer.from(workerKey);
+    /**
+     * Dopuszcza zapis czujnika przez administratora lub lokalnego workera symulacji.
+     * Klucz workera jest porównywany czasowo bezpiecznie i działa tylko dla bezpośredniego loopback/Host; poprawny klucz oznacza request.simulationWorker.
+     */
     const sensorWriteGuard:preHandlerHookHandler=async request=>{
       const supplied=request.headers['x-roversense-worker-key'];
       const address=app.server.address();
@@ -85,13 +103,13 @@ export function buildApp(options:{pool?:Pool;loadObserved?:(station:MetarStation
     const seriesService=createSeriesService(createSeriesRepository(pool));
     const sensorService=createSensorsService(createSensorsRepository(pool));
     const measureService=createMeasurementsService(createMeasurementsRepository(pool),events.publish);
-    app.register(async instance=>authRoutes(instance,authService,adminGuard));
-    app.register(async instance=>seriesRoutes(instance,seriesService,adminGuard));
-    app.register(async instance=>sensorsRoutes(instance,sensorService,adminGuard,sensorWriteGuard));
-    app.register(async instance=>measurementsRoutes(instance,measureService));
+    app.register(/** Rejestruje wydzielone trasy Fastify z zależnościami i strażnikami utworzonymi w buildApp. */ async instance=>authRoutes(instance,authService,adminGuard));
+    app.register(/** Rejestruje wydzielone trasy Fastify z zależnościami i strażnikami utworzonymi w buildApp. */ async instance=>seriesRoutes(instance,seriesService,adminGuard));
+    app.register(/** Rejestruje wydzielone trasy Fastify z zależnościami i strażnikami utworzonymi w buildApp. */ async instance=>sensorsRoutes(instance,sensorService,adminGuard,sensorWriteGuard));
+    app.register(/** Rejestruje wydzielone trasy Fastify z zależnościami i strażnikami utworzonymi w buildApp. */ async instance=>measurementsRoutes(instance,measureService));
     const simulations=createSimulationsService(app,createSimulationsRepository(pool),createSimulationHttpClient(app,workerKey),options.loadObserved);
-    app.register(async instance=>simulationsRoutes(instance,simulations,adminGuard));
-    app.addHook('preClose',async()=>{await simulations.close();});
+    app.register(/** Rejestruje wydzielone trasy Fastify z zależnościami i strażnikami utworzonymi w buildApp. */ async instance=>simulationsRoutes(instance,simulations,adminGuard));
+    app.addHook('preClose',/** Czeka na anulowanie i sprzątnięcie symulacji przed zakończeniem serwera. */ async()=>{await simulations.close();});
   }
   return app;
 }

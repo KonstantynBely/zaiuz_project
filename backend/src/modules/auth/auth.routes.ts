@@ -4,6 +4,7 @@ import type { LoginBody, PasswordBody } from './auth.schema.js';
 import { loginSchema, passwordSchema } from './auth.schema.js';
 import { createAuthController } from './auth.controller.js';
 
+/** Rejestruje logowanie oraz chronione wylogowanie i zmianę hasła z walidacją JSON. */
 export async function authRoutes(app: FastifyInstance, service: AuthService, auth: preHandlerHookHandler): Promise<void> {
   const ctl = createAuthController(service);
   app.post<{ Body: LoginBody }>('/api/auth/login', { schema: { body: loginSchema } }, ctl.login);

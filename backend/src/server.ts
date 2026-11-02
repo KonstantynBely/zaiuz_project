@@ -3,6 +3,10 @@ import { createPool } from './database/pool.js';
 import { buildApp } from './app.js';
 import { createSimulationsRepository } from './modules/simulations/simulations.repository.js';
 
+/**
+ * Uruchamia backend z konfiguracją środowiska, sprawdza schemat i odzyskuje osierocone czujniki.
+ * Dopiero po udanym przygotowaniu zaczyna nasłuchiwać; błąd startu ustawia kod procesu 1 i zwalnia zasoby.
+ */
 async function main(): Promise<void> {
   const config = getConfig();
   const pool = createPool(requiredDatabaseUrl());
@@ -20,12 +24,16 @@ async function main(): Promise<void> {
     return;
   }
 
+  /**
+   * Zamyka aplikację wraz z SSE i zadaniami symulacji, następnie kończy pulę PostgreSQL.
+   * Wywoływana przy SIGINT lub SIGTERM; kolejność pozwala dokończyć sprzątanie przed zamknięciem bazy.
+   */
   const shutdown = async () => {
     await app.close();
     await pool.end();
   };
-  process.once('SIGINT', () => { void shutdown(); });
-  process.once('SIGTERM', () => { void shutdown(); });
+  process.once('SIGINT', /** Rozpoczyna uporządkowane zamykanie zasobów po sygnale systemowym. */ () => { void shutdown(); });
+  process.once('SIGTERM', /** Rozpoczyna uporządkowane zamykanie zasobów po sygnale systemowym. */ () => { void shutdown(); });
 }
 
 void main();

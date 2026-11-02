@@ -3,7 +3,7 @@ import { startSimulationSchema,type SimulationInput } from './simulations.schema
 import { createSimulationsController } from './simulations.controller.js';
 import type { SimulationsService } from './simulations.service.js';
 
-/** Trasy rozszerzające API; nie zastępują standardowych metod pomiarów. */
+/** Rejestruje rozszerzenie API Start/Stop i odczyt statusów; każda trasa wymaga sesji administratora. */
 export async function simulationsRoutes(app:FastifyInstance,service:SimulationsService,auth:preHandlerHookHandler):Promise<void> {
   const ctl=createSimulationsController(service);
   app.get('/api/simulations',{preHandler:auth},ctl.list);

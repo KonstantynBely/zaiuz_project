@@ -1,6 +1,7 @@
 import type { Pool } from 'pg';
 import { transaction } from '../../common/transaction.js';
 
+/** Wiersz aktywnego czujnika z datą rejestracji i wyliczonym czasem ostatniego pomiaru. */
 export interface SensorRow {
   id: string; name: string; series_id: string; registered_at: Date;
   last_measurement_at: Date | null;
@@ -8,20 +9,30 @@ export interface SensorRow {
 const listColumns = `s.id::text, s.name, s.series_id::text,
   s.registered_at, (SELECT MAX(m.timestamp) FROM measurements m WHERE m.sensor_id=s.id) AS last_measurement_at`;
 
+/** Buduje zapytania SQL czujników; klucze przechowuje wyłącznie w postaci skrótu. */
 export function createSensorsRepository(pool: Pool) {
   return {
+    /** Zwraca niewyrejestrowane czujniki wraz z maksymalnym timestamp ich dotychczasowych pomiarów. */
     async list(): Promise<SensorRow[]> {
       return (await pool.query<SensorRow>(
         `SELECT ${listColumns} FROM sensors s WHERE s.revoked_at IS NULL ORDER BY s.id`,
       )).rows;
     },
+    /**
+     * Odczytuje aktywny czujnik z czasem ostatniego pomiaru.
+     * @returns Wiersz albo null także dla wyrejestrowanego urządzenia.
+     */
     async findById(id: string): Promise<SensorRow | null> {
       return (await pool.query<SensorRow>(
         `SELECT ${listColumns} FROM sensors s WHERE s.id=$1 AND s.revoked_at IS NULL`, [id],
       )).rows[0] ?? null;
     },
+    /**
+     * Tworzy czujnik tylko dla istniejącej serii. Dla workera atomowo dopisuje trwały wpis kolejki sprzątania.
+     * @returns Nowy wiersz lub null, gdy seria nie istnieje.
+     */
     async register(input: { name:string; seriesId:string; keyHash:string; simulationWorker?:boolean }): Promise<SensorRow | null> {
-      return transaction(pool, async client => {
+      return transaction(pool, /** Rejestruje czujnik i opcjonalny wpis kolejki sprzątania jako jedną operację atomową. */ async client => {
         const result = await client.query<SensorRow>(
           `INSERT INTO sensors (name,series_id,api_key_hash)
            SELECT $1,id,$3 FROM series WHERE id=$2
@@ -35,8 +46,12 @@ export function createSensorsRepository(pool: Pool) {
         return result.rows[0];
       });
     },
+    /**
+     * Atomowo ustawia revoked_at i usuwa wpis kolejki sprzątania; nie kasuje czujnika ani pomiarów.
+     * @returns Czy unieważniono dotąd aktywny czujnik.
+     */
     async revoke(id: string): Promise<boolean> {
-      return transaction(pool, async client => {
+      return transaction(pool, /** Unieważnia klucz i usuwa wpis kolejki sprzątania w jednej transakcji. */ async client => {
         const result = await client.query(
           'UPDATE sensors SET revoked_at=now() WHERE id=$1 AND revoked_at IS NULL RETURNING id', [id],
         );
@@ -46,4 +61,5 @@ export function createSensorsRepository(pool: Pool) {
     },
   };
 }
+/** Interfejs repozytorium wywnioskowany z fabryki operacji SQL, wstrzykiwany do serwisu. */
 export type SensorsRepository = ReturnType<typeof createSensorsRepository>;

@@ -4,13 +4,18 @@ import { isDatabaseId, parseTimestamp } from '../../common/validation.js';
 import type { MeasurementInput, MeasurementQuery } from './measurements.schema.js';
 import type { MeasurementRow, MeasurementsRepository } from './measurements.repository.js';
 
+/** Mapuje kolumny SQL na publiczny pomiar; czas zamienia na ISO UTC, a brak sensora pomija. */
 function expose(row:MeasurementRow) {
   return {id:row.id,seriesId:row.series_id,
     ...(row.sensor_id===null?{}:{sensorId:row.sensor_id}),value:row.value,
     timestamp:row.timestamp.toISOString()};
 }
 
-/** Czas i numeryczne ID walidowane przed SQL — parametry są przekazywane osobno. */
+/**
+ * Waliduje pojedyncze tekstowe parametry GET: serie, strefowe daty, kierunek i limit 1–10000.
+ * @returns Filtr gotowy do parametryzowanego SQL; domyślny limit wynosi 1000.
+ * @throws ApiError 400 przy duplikatach, błędnym ID, czasie lub niepoprawnym zakresie.
+ */
 export function parseMeasurementQuery(query:MeasurementQuery) {
   for (const name of ['series', 'from', 'to', 'sort', 'limit'] as const) {
     if (query[name] !== undefined && typeof query[name] !== 'string') {
@@ -19,7 +24,7 @@ export function parseMeasurementQuery(query:MeasurementQuery) {
   }
   if (query.series === '') throw new ApiError(400, 'Lista serii nie może być pusta');
   const series = query.series ? query.series.split(',') : undefined;
-  if (series?.some(x=>!isDatabaseId(x))) throw new ApiError(400,'Niepoprawna lista serii');
+  if (series?.some(/** Rozpoznaje niepoprawny identyfikator na liście serii przed zapytaniem SQL. */ x=>!isDatabaseId(x))) throw new ApiError(400,'Niepoprawna lista serii');
   const from = query.from===undefined?undefined:parseTimestamp(query.from);
   const to = query.to===undefined?undefined:parseTimestamp(query.to);
   if(from && to && from>to)throw new ApiError(400,'Parametr from nie może być późniejszy niż to');
@@ -30,14 +35,28 @@ export function parseMeasurementQuery(query:MeasurementQuery) {
   return {series,from,to,sort,limit};
 }
 
+/**
+ * Udostępnia odczyt i autoryzowany kluczem czujnika zapis pomiarów.
+ * @param onCreated Opcjonalny publikator, wywoływany po zatwierdzonym zapisie.
+ */
 export function createMeasurementsService(repo:MeasurementsRepository,onCreated?:(measurement:ReturnType<typeof expose>)=>void) {
   return {
+    /** Waliduje filtr odczytu i mapuje wiersze repozytorium na publiczne pomiary. */
     async list(query:MeasurementQuery) { return (await repo.list(parseMeasurementQuery(query))).map(expose); },
+    /**
+     * Odczytuje jeden pomiar w formacie publicznym.
+     * @throws ApiError 404, gdy repozytorium nie zwróci zasobu.
+     */
     async get(id:string) {
       const measurement=await repo.findById(id);
       if(!measurement)throw new ApiError(404,'Nie znaleziono pomiaru');
       return expose(measurement);
     },
+    /**
+     * Hashuje klucz, interpretuje datę lub czas serwera i zleca transakcyjny zapis.
+     * Po sukcesie publikuje pomiar; odmowę zakresu/czasu zapisuje w rejestrze odrzuceń.
+     * @throws ApiError 401 dla klucza, 400 dla daty i 422 dla zakresu albo zbyt odległej przyszłości.
+     */
     async create(key:string|undefined,input:MeasurementInput) {
       if(!key || key.length<32)throw new ApiError(401,'Nieprawidłowy klucz czujnika');
       const timestamp=input.timestamp === undefined ? new Date() : parseTimestamp(input.timestamp);
@@ -52,4 +71,5 @@ export function createMeasurementsService(repo:MeasurementsRepository,onCreated?
     },
   };
 }
+/** Interfejs serwisu wywnioskowany z jego fabryki; kontrolery zależą od niego zamiast od implementacji SQL. */
 export type MeasurementsService=ReturnType<typeof createMeasurementsService>;

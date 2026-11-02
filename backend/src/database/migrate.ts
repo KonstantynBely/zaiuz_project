@@ -2,7 +2,12 @@ import { readFile, readdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { createPool } from './pool.js';
 
-/** Uruchamia wersjonowane pliki SQL w kolejności; pojedyncza migracja = transakcja. */
+/**
+ * Stosuje nieuruchomione migracje SQL w kolejności nazw i ewidencjonuje je w schema_migrations.
+ * Każdy plik ma osobną transakcję i blokadę advisory chroniącą przed równoległym zastosowaniem.
+ * Katalog wskazuje MIGRATIONS_DIR lub ścieżka względem katalogu backendu.
+ * @throws Błąd odczytu lub SQL; nieudaną migrację wycofuje, a połączenie i pulę zamyka.
+ */
 async function migrate(): Promise<void> {
   const pool = createPool();
   const client = await pool.connect();
@@ -12,7 +17,7 @@ async function migrate(): Promise<void> {
       applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
     )`);
     const directory = process.env.MIGRATIONS_DIR ?? resolve(process.cwd(), '../database/migrations');
-    const files = (await readdir(directory)).filter(file => /^\d{3}_.+\.sql$/.test(file)).sort();
+    const files = (await readdir(directory)).filter(/** Wybiera tylko pliki SQL o wersjonowanej nazwie migracji. */ file => /^\d{3}_.+\.sql$/.test(file)).sort();
     if (files.length === 0) throw new Error(`Nie znaleziono migracji w ${directory}`);
     for (const file of files) {
       await client.query('BEGIN');
@@ -36,7 +41,7 @@ async function migrate(): Promise<void> {
   }
 }
 
-migrate().catch(error => {
+migrate().catch(/** Raportuje błąd skryptu bez sekretów i ustawia niezerowy kod zakończenia procesu. */ error => {
   console.error('Błąd migracji:', error instanceof Error ? error.message : String(error));
   process.exitCode = 1;
 });

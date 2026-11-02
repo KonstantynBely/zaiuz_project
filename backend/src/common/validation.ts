@@ -1,12 +1,11 @@
 import { ApiError } from './errors.js';
 
-export const idSchema = { type: 'string', pattern: '^[1-9][0-9]*$' } as const;
-export const pathIdSchema = (name: string) => ({
-  type: 'object', required: [name], additionalProperties: false,
-  properties: { [name]: idSchema },
-});
-
-/** Interpretacja API datetime wymaga jawnej strefy, nie lokalnego czasu serwera. */
+/**
+ * Parsuje pełny znacznik ISO 8601 z jawną strefą, sprawdzając kalendarz przed konstrukcją Date.
+ * Zapobiega normalizacji nieistniejącej daty, np. 30 lutego, do kolejnego miesiąca.
+ * @returns Chwila niezależna od lokalnej strefy serwera.
+ * @throws ApiError 400 dla błędnej daty, godziny lub brakującej strefy.
+ */
 export function parseTimestamp(value: string): Date {
   const parts = typeof value === 'string' && /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|[+-](\d{2}):(\d{2}))$/i.exec(value);
   if (!parts) {
@@ -31,12 +30,22 @@ export function parseTimestamp(value: string): Date {
   return date;
 }
 
-/** Id w URL jest sprawdzany osobno, aby nie ujawniać szczegółów bazy. */
+/**
+ * Rozpoznaje dodatni dziesiętny identyfikator mieszczący się w PostgreSQL BIGINT.
+ * Porównuje tekst bez konwersji na Number, aby nie tracić precyzji dużych ID.
+ * @returns Predykat zawężający wartość do poprawnego napisu.
+ */
 export function isDatabaseId(value: unknown): value is string {
   return typeof value === 'string' && /^[1-9]\d*$/.test(value) &&
     (value.length < 19 || (value.length === 19 && value <= '9223372036854775807'));
 }
 
+/**
+ * Sprawdza identyfikator przed SQL i pozostawia go jako tekst.
+ * @param value Wartość z URL lub znormalizowanego body.
+ * @param status Kod odmowy: domyślnie 404 dla zasobu, 422 dla odwołania w body.
+ * @throws ApiError z wybranym kodem, jeżeli ID nie mieści się w BIGINT.
+ */
 export function parseId(value: string, status = 404): string {
   if (!isDatabaseId(value)) throw new ApiError(status, status === 404 ? 'Nie znaleziono zasobu' : 'Niepoprawny identyfikator');
   return value;

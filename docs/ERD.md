@@ -2,6 +2,8 @@
 
 Diagram odpowiada migracjom `database/migrations/001_initial.sql` i `002_simulation_sensor_cleanup.sql` w PostgreSQL 17 z rozszerzeniem TimescaleDB. Tabela measurements jest hypertable dzieloną według timestamp.
 
+Diagram przedstawia dane aplikacji. Techniczna tabela `schema_migrations`, tworzona przez runner migracji, przechowuje nazwy zastosowanych plików SQL i daty ich wykonania; nie ma relacji z danymi domenowymi.
+
 ```mermaid
 erDiagram
     admins ||--o{ access_tokens : "posiada"
@@ -94,4 +96,6 @@ Pole ready ma domyślnie wartość false; przed próbą wyrejestrowania jest ust
 
 Generator Python lub backendowy symulator wysyła POST /api/measurements z nagłówkiem X-API-Key. Backend weryfikuje klucz oraz zakres serii i zapisuje wynik w TimescaleDB. Publiczny dashboard pobiera dane przez GET /api/measurements i nasłuchuje /api/events (SSE). Interfejs nie pozwala ręcznie edytować pojedynczych wyników.
 
-*To źródło diagramu do przyszłego PDF, a nie gotowe zgłoszenie E2.*
+## Utrzymanie schematu
+
+Wersje schematu opisują migracje w `database/migrations/`, uruchamiane jawnie przez runner backendu. Zmianę modelu należy opisać nową migracją i zaktualizować diagram. Sam start API nie tworzy tabel. Tokeny wygasłe, historia symulacji i odrzuceń nie mają automatycznej retencji w kodzie aplikacji.

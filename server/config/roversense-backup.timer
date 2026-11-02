@@ -2,6 +2,7 @@
 Description=RoverSense - Daily PostgreSQL Backup
 
 [Timer]
+# Godzina jest interpretowana w strefie hosta. Persistent nadrabia pominięte uruchomienie po restarcie.
 OnCalendar=*-*-* 02:30:00
 Persistent=true
 Unit=roversense-backup.service

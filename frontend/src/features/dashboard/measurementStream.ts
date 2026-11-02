@@ -1,7 +1,9 @@
 import type { Measurement } from '../../api/client';
 
+/** Dostępne filtry czasu: wszystkie dane, przesuwane okno albo własny domknięty przedział. */
 export type MeasurementRange = 'all' | '24h' | '7d' | '30d' | 'custom';
 
+/** Migawka filtrów dla jednej generacji telemetrii; rozróżnia serie znane i ukryte. */
 export interface StreamFilter {
   range: MeasurementRange;
   from?: string;
@@ -10,13 +12,18 @@ export interface StreamFilter {
   availableSeriesIds: readonly string[];
 }
 
-export function validMeasurement(item: Measurement | null | undefined): item is Measurement {
+/** Sprawdza obecność ID, skończoną wartość i parsowalny czas przed scalaniem danych REST/SSE. */
+function validMeasurement(item: Measurement | null | undefined): item is Measurement {
   return !!item && item.id != null && item.seriesId != null &&
     typeof item.value === 'number' && Number.isFinite(item.value) &&
     typeof item.timestamp === 'string' && Number.isFinite(Date.parse(item.timestamp));
 }
 
-export function compareMeasurements(a: Measurement, b: Measurement): number {
+/**
+ * Porządkuje pomiary od najnowszych; remisy czasu rozstrzyga malejącym BIGINT ID.
+ * Dla identyfikatorów innych niż liczby używa porównania napisów, bez utraty precyzji przez Number.
+ */
+function compareMeasurements(a: Measurement, b: Measurement): number {
   const times = Date.parse(b.timestamp) - Date.parse(a.timestamp);
   if (times) return times;
   try {
@@ -28,6 +35,10 @@ export function compareMeasurements(a: Measurement, b: Measurement): number {
   }
 }
 
+/**
+ * Sprawdza poprawność próbki, znane/widoczne serie i domknięte granice czasu.
+ * @param now Czas odniesienia w milisekundach dla przesuwanych okien 24 h, 7 i 30 dni.
+ */
 export function matchesStreamFilter(item: Measurement, filter: StreamFilter, now: number): boolean {
   if (!validMeasurement(item)) return false;
   const id = String(item.seriesId);
@@ -44,6 +55,10 @@ export function matchesStreamFilter(item: Measurement, filter: StreamFilter, now
   return true;
 }
 
+/**
+ * Łączy migawkę z dozwolonymi zdarzeniami, usuwa duplikaty po ID i ogranicza wynik po sortowaniu.
+ * Zdarzenie później przetwarzane zastępuje rekord o tym samym ID; wejściowe tablice nie są modyfikowane.
+ */
 export function reconcileMeasurements(
   fetched: readonly Measurement[], events: readonly Measurement[],
   filter: StreamFilter, now: number, limit = 1000,
@@ -55,15 +70,20 @@ export function reconcileMeasurements(
   return [...byId.values()].sort(compareMeasurements).slice(0, limit);
 }
 
+/**
+ * Dodaje tylko pasujące, nieznane ID i ponownie stosuje porządek oraz limit.
+ * Dla duplikatu lub próbki spoza filtra zwraca tę samą referencję tablicy.
+ */
 export function appendStreamMeasurement(
   previous: Measurement[], item: Measurement, filter: StreamFilter, now: number,
   limit = 1000,
 ): Measurement[] {
   if (!matchesStreamFilter(item, filter, now) ||
-    previous.some(previousItem => String(previousItem.id) === String(item.id))) return previous;
+    previous.some(/** Dopasowuje identyfikatory jako tekst, aby obsłużyć liczbowe i tekstowe ID kontraktu. */ previousItem => String(previousItem.id) === String(item.id))) return previous;
   return reconcileMeasurements(previous, [item], filter, now, limit);
 }
 
+/** Wybiera nowszą poprawną próbkę według czasu i ID; błędna lub starsza próbka nie usuwa poprzedniej. */
 export function preferLatest(
   previous: Measurement | null | undefined, incoming: Measurement,
 ): Measurement | null | undefined {
@@ -73,17 +93,25 @@ export function preferLatest(
 }
 
 /**
- * REST returns an authoritative snapshot for one filter generation.
- * Only SSE events received after that generation began are merged with it.
+ * Synchronizator migawki REST i zdarzeń SSE dla jednej generacji filtrów.
+ * Nowa migawka jest rozstrzygająca; scala się z nią tylko zdarzenia odebrane od jej rozpoczęcia.
  */
 export class TelemetryReconciler {
+  /** Monotoniczny numer odróżniający odczyt rozpoczęty przed zmianą filtrów od aktualnego. */
   private generation = 0;
+  /** Bufor zdarzeń odebranych podczas REST, podzielony na serie, z numerem właściciela odczytu. */
   private pending: { generation: number; events: Map<string, Measurement[]> } | null = null;
+  /** Ostatnia uporządkowana i ograniczona migawka danych widocznych w UI. */
   private rows: Measurement[] = [];
+  /** Filtr aktualnej generacji; jego lista serii zostaje uzupełniona przez autorytatywny REST. */
   private filter: StreamFilter = {
     range: 'all', availableSeriesIds: [], hiddenSeriesIds: [],
   };
 
+  /**
+   * Otwiera nową generację odczytu REST i bufor zdarzeń, filtrując dotychczasowe wiersze.
+   * @returns Numer generacji wymagany przy finish().
+   */
   begin(filter: StreamFilter, now = Date.now()): number {
     ++this.generation;
     this.filter = filter;
@@ -92,6 +120,10 @@ export class TelemetryReconciler {
     return this.generation;
   }
 
+  /**
+   * Przyjmuje zdarzenie SSE i aktualizuje widoczne wiersze.
+   * W trakcie REST buforuje do limitu osobno dla każdej serii, aby inne serie nie wyparły użytecznych próbek.
+   */
   receive(item: Measurement, now = Date.now()): Measurement[] {
     if (!validMeasurement(item)) return this.rows;
     // The authoritative series list arrives with REST. Keep a separate bounded
@@ -106,6 +138,10 @@ export class TelemetryReconciler {
     return this.rows;
   }
 
+  /**
+   * Stosuje autorytatywną migawkę REST wraz ze zdarzeniami odebranymi po begin().
+   * @returns Nowe wiersze lub null dla nieaktualnej/unieważnionej generacji.
+   */
   finish(generation: number, loaded: readonly Measurement[],
     filter: StreamFilter, now = Date.now()): Measurement[] | null {
     if (!this.pending || this.pending.generation !== generation) return null;
@@ -115,11 +151,13 @@ export class TelemetryReconciler {
     return this.rows;
   }
 
+  /** Ponownie stosuje filtr czasowy do przechowywanych wierszy, usuwając wygasłe próbki okna. */
   visible(now = Date.now()): Measurement[] {
     this.rows = reconcileMeasurements(this.rows, [], this.filter, now);
     return this.rows;
   }
 
+  /** Unieważnia trwający REST i jego bufor zdarzeń; zachowuje już widoczne wiersze. */
   invalidate(): void {
     ++this.generation;
     this.pending = null;

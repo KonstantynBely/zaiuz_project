@@ -1,5 +1,7 @@
 import type { MetarStation } from './metar.source.js';
+/** Stan cyklu życia zadania, obejmujący przygotowanie, wykonywanie, zatrzymywanie i trzy stany końcowe. */
 export type SimulationState = 'pending'|'running'|'stopping'|'stopped'|'completed'|'failed';
+/** Parametry nowego zadania; dla observed wymagane jest station, a count i zakres wynikają z obserwacji oraz serii. */
 export interface SimulationInput {
   seriesId: string | number;
   name?: string;
@@ -11,13 +13,14 @@ export interface SimulationInput {
   min?: number;
   max?: number;
 }
+/** Znormalizowane parametry zapisane z uruchomieniem; interwał jest podany w milisekundach. */
 export interface SimulationParameters {
   mode: SimulationInput['mode']; pattern: SimulationInput['pattern'];
   count: number; intervalMs: number; min: number; max: number;
   station?: MetarStation; source?: 'AWC METAR';
 }
 
-/** Kontrola schematu zapobiega uruchamianiu nieznanych programów przez API. */
+/** Schemat walidacji JSON dla uruchomienia symulacji. Typy i wymagane pola sprawdza Fastify przed handlerem; reguły domenowe weryfikuje serwis. */
 export const startSimulationSchema = {
   type:'object', additionalProperties:false, required:['seriesId','mode','pattern'],
   properties:{

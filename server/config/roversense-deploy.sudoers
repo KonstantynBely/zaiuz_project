@@ -1,1 +1,3 @@
+# Jedyny dozwolony program uprzywilejowany; sam aktywator wymaga jednego argumentu SHA
+# i sprawdza katalogi oraz właścicieli. Reguła nie udostępnia dowolnej powłoki jako root.
 roversense-deploy ALL=(root) NOPASSWD: /usr/local/sbin/roversense-activate

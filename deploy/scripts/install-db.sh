@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# Przygotowanie nowego hosta Ubuntu 24.04 ARM64; wymaga root i dostępu do repozytoriów APT.
+# Instaluje PostgreSQL/TimescaleDB, ogranicza nasłuchiwanie do localhost i restartuje klaster.
+# Nie tworzy tabel aplikacji; bootstrap-db.sh przygotowuje rolę, bazę i rozszerzenie.
+# set -euo pipefail kończy pracę po błędzie; zmiany pakietów i konfiguracji nie są transakcyjne.
 set -euo pipefail
 
 # Instalacja PostgreSQL 17 i TimescaleDB na Ubuntu 24.04 ARM64.

@@ -9,6 +9,7 @@
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b",
     "test": "node --experimental-strip-types --test tests/*.test.mjs",
+    "test:browser": "node --test tests/browser/*.mjs",
     "preview": "vite preview --host 127.0.0.1"
   },
   "dependencies": {

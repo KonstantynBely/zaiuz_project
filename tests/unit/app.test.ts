@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { buildApp } from '../../backend/src/app.js';
 import { getConfig, requiredDatabaseUrl } from '../../backend/src/config/env.js';
 
+/** Sprawdza scenariusz: GET /api/health zwraca wynik zgodny z OpenAPI. */
 test('GET /api/health zwraca wynik zgodny z OpenAPI', async () => {
   const app = buildApp();
   try {
@@ -13,8 +14,10 @@ test('GET /api/health zwraca wynik zgodny z OpenAPI', async () => {
   } finally { await app.close(); }
 });
 
-test('GET /api/series pobiera dane z repozytorium, bez atrap', async () => {
+/** Sprawdza scenariusz: GET /api/series mapuje wynik repozytorium na odpowiedź API. */
+test('GET /api/series mapuje wynik repozytorium na odpowiedź API', async () => {
   const pool = {
+    /** Zwraca kontrolowany wynik SQL lub rejestruje polecenie bez połączenia z bazą. */
     query: async () => ({ rows: [{ id: '1', name: 'Temperatura', min_value: -40, max_value: 80, color: '#B45309' }] }),
   };
   const app = buildApp({ pool: pool as never });
@@ -27,8 +30,31 @@ test('GET /api/series pobiera dane z repozytorium, bez atrap', async () => {
   } finally { await app.close(); }
 });
 
+/** Sprawdza scenariusz: Walidacja JSON odrzuca błędne typy przed użyciem repozytorium. */
+test('Walidacja JSON odrzuca błędne typy przed użyciem repozytorium', async () => {
+  let queries = 0;
+  const app = buildApp({ pool: { /** Zwraca kontrolowany wynik SQL lub rejestruje polecenie bez połączenia z bazą. */ query: async () => { queries++; return { rows: [] }; } } as never });
+  try {
+    const base = { name: 'Seria', minValue: 0, maxValue: 10, color: '#112233' };
+    const requests = [
+      ...[{ name: 123 }, { minValue: '0' }, { minValue: null }, { maxValue: true }]
+        .map(/** Przekształca kontrolowane dane wejściowe w rekordy lub żądania badanego scenariusza. */ input => ({ url: '/api/series', payload: { ...base, ...input } })),
+      ...[null, true, '12'].map(/** Przekształca kontrolowane dane wejściowe w rekordy lub żądania badanego scenariusza. */ value => ({ url: '/api/measurements', payload: { value } })),
+      { url: '/api/auth/login', payload: { username: 123, password: 'password' } },
+      { url: '/api/sensors', payload: { name: 123, seriesId: '1' } },
+    ];
+    for (const request of requests) {
+      const response = await app.inject({ method: 'POST', ...request, headers: { 'x-api-key': 'a'.repeat(64) } });
+      assert.equal(response.statusCode, 400, JSON.stringify(request));
+      assert.equal(response.json().status, 400);
+    }
+    assert.equal(queries, 0);
+  } finally { await app.close(); }
+});
+
+/** Sprawdza scenariusz: Nieistniejąca seria zwraca 404 Problem Details. */
 test('Nieistniejąca seria zwraca 404 Problem Details', async () => {
-  const app = buildApp({ pool: { query: async () => ({ rows: [] }) } as never });
+  const app = buildApp({ pool: { /** Zwraca kontrolowany wynik SQL lub rejestruje polecenie bez połączenia z bazą. */ query: async () => ({ rows: [] }) } as never });
   try {
     const response = await app.inject({ method: 'GET', url: '/api/series/99999' });
     assert.equal(response.statusCode, 404);
@@ -37,16 +63,18 @@ test('Nieistniejąca seria zwraca 404 Problem Details', async () => {
   } finally { await app.close(); }
 });
 
+/** Sprawdza scenariusz: DATABASE_URL musi być PostgreSQL. */
 test('DATABASE_URL musi być PostgreSQL', () => {
-  assert.throws(() => requiredDatabaseUrl({}), /DATABASE_URL/);
-  assert.throws(() => requiredDatabaseUrl({ DATABASE_URL: 'file:app.db' }), /PostgreSQL/);
+  assert.throws(/** Wykonuje niedozwolone wywołanie, którego synchroniczny wyjątek jest przedmiotem asercji. */ () => requiredDatabaseUrl({}), /DATABASE_URL/);
+  assert.throws(/** Wykonuje niedozwolone wywołanie, którego synchroniczny wyjątek jest przedmiotem asercji. */ () => requiredDatabaseUrl({ DATABASE_URL: 'file:app.db' }), /PostgreSQL/);
   assert.equal(getConfig({ PORT: '3001' }).port, 3001);
-  assert.throws(() => getConfig({ PORT: '99999' }), /PORT/);
+  assert.throws(/** Wykonuje niedozwolone wywołanie, którego synchroniczny wyjątek jest przedmiotem asercji. */ () => getConfig({ PORT: '99999' }), /PORT/);
 });
 
+/** Sprawdza scenariusz: Błędne publiczne identyfikatory i filtry zwracają 4xx przed zapytaniem SQL. */
 test('Błędne publiczne identyfikatory i filtry zwracają 4xx przed zapytaniem SQL', async () => {
   let queries = 0;
-  const app = buildApp({ pool: { query: async () => { queries++; return { rows: [] }; } } as never });
+  const app = buildApp({ pool: { /** Zwraca kontrolowany wynik SQL lub rejestruje polecenie bez połączenia z bazą. */ query: async () => { queries++; return { rows: [] }; } } as never });
   try {
     for (const [url, status] of [
       ['/api/series/9223372036854775808', 404],

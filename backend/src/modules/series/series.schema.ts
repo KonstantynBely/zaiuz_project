@@ -1,3 +1,4 @@
+/** Edytowalne pola pełnego opisu serii; granice muszą być skończone i spełniać minValue < maxValue. */
 export interface SeriesInput {
   name: string;
   minValue: number;
@@ -7,6 +8,7 @@ export interface SeriesInput {
   icon?: string | null;
 }
 
+/** Schemat walidacji JSON dla pełnego opisu serii. Typy i wymagane pola sprawdza Fastify przed handlerem; reguły domenowe weryfikuje serwis. */
 export const seriesBodySchema = {
   type: 'object', additionalProperties: false,
   required: ['name', 'minValue', 'maxValue', 'color'],

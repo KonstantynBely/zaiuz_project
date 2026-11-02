@@ -1,4 +1,6 @@
+/** Dane rejestracji czujnika; wskazana seria musi istnieć, a jej ID mieścić się w BIGINT. */
 export interface SensorInput { name: string; seriesId: string | number }
+/** Schemat walidacji JSON dla rejestracji czujnika. Typy i wymagane pola sprawdza Fastify przed handlerem; reguły domenowe weryfikuje serwis. */
 export const sensorBodySchema = {
   type: 'object', required: ['name','seriesId'], additionalProperties: false,
   properties: {
